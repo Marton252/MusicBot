@@ -460,13 +460,96 @@ Access at `https://127.0.0.1:8080` after starting the bot.
 
 ## 🐳 Docker
 
+### Quick Start (Recommended)
+
+Pull the pre-built image from GitHub Container Registry — no build required:
+
 ```bash
-# Build and run
+# 1. Clone the repo (for .env.example and docker-compose)
+git clone https://github.com/Marton252/MusicBot.git
+cd MusicBot
+
+# 2. Create your .env file
+cp .env.example .env
+# Edit .env with your DISCORD_TOKEN and DASHBOARD_ADMIN_PASSWORD
+
+# 3. Start with Docker Compose
+cp docker-compose.example.yml docker-compose.yml
 docker compose up -d
+```
+
+The dashboard is available at `https://localhost:25825`.
+
+### Docker Compose Configuration
+
+The included `docker-compose.example.yml` uses the pre-built image:
+
+```yaml
+services:
+  bot:
+    image: ghcr.io/marton252/musicbot:latest
+    container_name: discord-musicbot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DASHBOARD_BIND=0.0.0.0
+      - DATABASE_PATH=/app/data/database.db
+      - TZ=${BOT_TIMEZONE:-UTC}
+    ports:
+      - "${DASHBOARD_PORT:-25825}:${DASHBOARD_PORT:-25825}"
+    volumes:
+      - bot-data:/app/data
+      # - ./certs:/app/certs:ro        # Optional: custom TLS certs
+      # - ./cookies.txt:/app/cookies.txt:ro  # Optional: YouTube cookies
+
+volumes:
+  bot-data:
+```
+
+### Manual Docker Run
+
+```bash
+docker run -d \
+  --name discord-musicbot \
+  --env-file .env \
+  -e DASHBOARD_BIND=0.0.0.0 \
+  -e DATABASE_PATH=/app/data/database.db \
+  -p 25825:25825 \
+  -v musicbot-data:/app/data \
+  --restart unless-stopped \
+  ghcr.io/marton252/musicbot:latest
+```
+
+### Build from Source
+
+If you prefer to build the image locally instead of using the pre-built one:
+
+```bash
+# Using Docker Compose
+docker compose -f docker-compose.yml up -d --build
 
 # Or manually
 docker build -t discord-musicbot .
-docker run -d --env-file .env discord-musicbot
+docker run -d --env-file .env -p 25825:25825 discord-musicbot
+```
+
+### Available Tags
+
+| Tag | Description |
+| --- | --- |
+| `latest` | Most recent stable release |
+| `1.0.0` | Specific version |
+| `1.0` | Latest patch of minor version |
+| `1` | Latest minor of major version |
+
+### Useful Commands
+
+```bash
+docker compose logs -f        # Follow live logs
+docker compose restart         # Restart the bot
+docker compose pull && docker compose up -d  # Update to latest version
+docker compose down            # Stop and remove container
 ```
 
 ---
