@@ -161,7 +161,7 @@ function Sparkline({ data, maxVal, color, id, unit, rangeSec }: {
           <circle cx={(data.length - 1) * step} cy={getY(data[data.length - 1])} r="3" fill={color} className="animate-pulse" />
         )}
       </svg>
-      {hover && containerRef.current && (
+      {hover && (
         <div className="absolute top-0 pointer-events-none z-10 -translate-x-1/2" style={{ left: `${hover.x}%` }}>
           <div className="bg-slate-800/95 backdrop-blur border border-white/10 rounded-lg px-3 py-1.5 shadow-xl text-center whitespace-nowrap">
             <div className="text-white font-mono text-sm font-semibold">{hover.val}{unit}</div>
@@ -242,17 +242,27 @@ function UserManagementPanel() {
   const [editUser, setEditUser] = useState<DashboardUser | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DashboardUser | null>(null);
 
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = async () => {
     try {
       const res = await fetch('/api/users');
-      if (res.ok) {
-        setUsers(await res.json());
-      }
+      if (res.ok) setUsers(await res.json());
     } catch { /* ignore */ }
     setLoading(false);
-  }, []);
+  };
 
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/users');
+        if (res.ok && !cancelled) {
+          setUsers(await res.json());
+        }
+      } catch { /* ignore */ }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleToggle = async (user: DashboardUser, field: 'can_restart' | 'can_view_logs') => {
     const update = { [field]: !user[field] };
@@ -611,6 +621,52 @@ function UserFormModal({ title, initialData, isEdit, onClose, onSave }: {
   );
 }
 
+// ─── Graph Panel (extracted to avoid ref access in parent render) ────────────
+
+function GraphPanel({ cpuHistory, ramHistory, pingHistory, timeRange, stats }: {
+  cpuHistory: React.RefObject<number[]>;
+  ramHistory: React.RefObject<number[]>;
+  pingHistory: React.RefObject<number[]>;
+  timeRange: number;
+  stats: Stats | null;
+}) {
+  const cpuSlice = downsample(cpuHistory.current.slice(-timeRange), 300);
+  const ramSlice = downsample(ramHistory.current.slice(-timeRange), 300);
+  const pingSlice = downsample(pingHistory.current.slice(-timeRange), 300);
+
+  return (
+    <div className="col-span-2 lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-6">
+      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-xl">
+        <div className="flex justify-between items-center mb-3">
+          <span className="flex items-center gap-2 font-medium text-white text-sm"><Cpu className="w-4 h-4 text-indigo-400" /> CPU</span>
+          <span className="font-mono text-sm text-white">{stats?.cpu_usage !== undefined ? `${stats.cpu_usage}%` : '...'}</span>
+        </div>
+        <div className="bg-black/30 rounded-xl border border-white/5 p-2">
+          <Sparkline data={cpuSlice} maxVal={100} color="#818cf8" id="cpu" unit="%" rangeSec={timeRange} />
+        </div>
+      </div>
+      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-xl">
+        <div className="flex justify-between items-center mb-3">
+          <span className="flex items-center gap-2 font-medium text-white text-sm"><Database className="w-4 h-4 text-emerald-400" /> RAM</span>
+          <span className="font-mono text-sm text-white">{stats?.ram_usage_mb !== undefined ? `${stats.ram_usage_mb} MB` : '...'}</span>
+        </div>
+        <div className="bg-black/30 rounded-xl border border-white/5 p-2">
+          <Sparkline data={ramSlice} maxVal={512} color="#34d399" id="ram" unit=" MB" rangeSec={timeRange} />
+        </div>
+      </div>
+      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 sm:p-6 shadow-xl">
+        <div className="flex justify-between items-center mb-3">
+          <span className="flex items-center gap-2 font-medium text-white text-sm"><Activity className="w-4 h-4 text-brand-500" /> Ping</span>
+          <span className="font-mono text-sm text-white">{stats?.ping !== undefined ? `${stats.ping}ms` : '...'}</span>
+        </div>
+        <div className="bg-black/30 rounded-xl border border-white/5 p-2">
+          <Sparkline data={pingSlice} maxVal={Math.max(200, ...pingSlice)} color="#FF6B6B" id="ping" unit="ms" rangeSec={timeRange} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Dashboard ─────────────────────────────────────────────────────────────
 
 export default function Dashboard({ user, onLogout }: { user: DashUser; onLogout: () => void }) {
@@ -626,7 +682,7 @@ export default function Dashboard({ user, onLogout }: { user: DashUser; onLogout
   const logsEndRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
   const reconnectDelay = useRef(WS_RECONNECT_BASE);
-  const disconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const cancelBtnRef = useRef<HTMLButtonElement>(null);
 
   const cpuHistory = useRef<number[]>([]);
@@ -644,12 +700,13 @@ export default function Dashboard({ user, onLogout }: { user: DashUser; onLogout
 
   useEffect(() => {
     if (wsStatus !== 'connected') {
-      disconnectTimer.current = setTimeout(() => setShowDisconnect(true), DISCONNECT_GRACE_MS);
+      const timer = setTimeout(() => setShowDisconnect(true), DISCONNECT_GRACE_MS);
+      return () => clearTimeout(timer);
     } else {
-      if (disconnectTimer.current) clearTimeout(disconnectTimer.current);
-      setShowDisconnect(false);
+      // Defer to avoid synchronous setState in effect body
+      const timer = setTimeout(() => setShowDisconnect(false), 0);
+      return () => clearTimeout(timer);
     }
-    return () => { if (disconnectTimer.current) clearTimeout(disconnectTimer.current); };
   }, [wsStatus]);
 
   useEffect(() => {
@@ -812,42 +869,13 @@ export default function Dashboard({ user, onLogout }: { user: DashUser; onLogout
         </div>
 
         {graphMode ? (
-          (() => {
-            const cpuSlice = downsample(cpuHistory.current.slice(-timeRange), 300);
-            const ramSlice = downsample(ramHistory.current.slice(-timeRange), 300);
-            const pingSlice = downsample(pingHistory.current.slice(-timeRange), 300);
-            return (
-              <div className="col-span-2 lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-6">
-                <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-xl">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="flex items-center gap-2 font-medium text-white text-sm"><Cpu className="w-4 h-4 text-indigo-400" /> CPU</span>
-                    <span className="font-mono text-sm text-white">{stats?.cpu_usage !== undefined ? `${stats.cpu_usage}%` : '...'}</span>
-                  </div>
-                  <div className="bg-black/30 rounded-xl border border-white/5 p-2">
-                    <Sparkline data={cpuSlice} maxVal={100} color="#818cf8" id="cpu" unit="%" rangeSec={timeRange} />
-                  </div>
-                </div>
-                <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-xl">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="flex items-center gap-2 font-medium text-white text-sm"><Database className="w-4 h-4 text-emerald-400" /> RAM</span>
-                    <span className="font-mono text-sm text-white">{stats?.ram_usage_mb !== undefined ? `${stats.ram_usage_mb} MB` : '...'}</span>
-                  </div>
-                  <div className="bg-black/30 rounded-xl border border-white/5 p-2">
-                    <Sparkline data={ramSlice} maxVal={512} color="#34d399" id="ram" unit=" MB" rangeSec={timeRange} />
-                  </div>
-                </div>
-                <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 sm:p-6 shadow-xl">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="flex items-center gap-2 font-medium text-white text-sm"><Activity className="w-4 h-4 text-brand-500" /> Ping</span>
-                    <span className="font-mono text-sm text-white">{stats?.ping !== undefined ? `${stats.ping}ms` : '...'}</span>
-                  </div>
-                  <div className="bg-black/30 rounded-xl border border-white/5 p-2">
-                    <Sparkline data={pingSlice} maxVal={Math.max(200, ...pingSlice)} color="#FF6B6B" id="ping" unit="ms" rangeSec={timeRange} />
-                  </div>
-                </div>
-              </div>
-            );
-          })()
+          <GraphPanel
+            cpuHistory={cpuHistory}
+            ramHistory={ramHistory}
+            pingHistory={pingHistory}
+            timeRange={timeRange}
+            stats={stats}
+          />
         ) : (
           <>
             <div className="col-span-2 lg:col-span-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 sm:p-6 flex flex-col justify-center gap-4 sm:gap-6 shadow-xl">
