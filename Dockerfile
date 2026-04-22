@@ -52,11 +52,11 @@ USER botuser
 RUN python generate_cert.py
 
 # Expose dashboard port
-EXPOSE 8080
+EXPOSE 25825
 
 # Health check — verify the bot process is alive
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD python -c "import os, urllib.request, ssl; urllib.request.urlopen(f'https://localhost:{os.environ.get(\"DASHBOARD_PORT\", 8080)}/', context=ssl._create_unverified_context())" || exit 1
+    CMD python -c "import os, urllib.request, ssl; urllib.request.urlopen(f'https://localhost:{os.environ.get(\"DASHBOARD_PORT\", 25825)}/', context=ssl._create_unverified_context())" || exit 1
 
 # Run the bot (using --run directly, Docker handles restarts)
 CMD ["python", "bot.py", "--run"]

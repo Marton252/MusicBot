@@ -11,12 +11,7 @@ services:
     environment:
       - DASHBOARD_BIND=0.0.0.0
       - DATABASE_PATH=/app/data/database.db
-      - DASHBOARD_PORT=25825
       - TZ=${BOT_TIMEZONE:-UTC}
-      - BOT_TIMEZONE=${BOT_TIMEZONE:-UTC}
-
-    ports:
-      - "25825:25825"
 
     volumes:
       # Persist the SQLite database across container rebuilds

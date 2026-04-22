@@ -87,7 +87,7 @@ COOKIES_FROM_BROWSER: str = os.getenv("COOKIES_FROM_BROWSER", "")
 COOKIES_FILE: str = os.getenv("COOKIES_FILE", "")
 
 # Web Dashboard Settings
-DASHBOARD_PORT: int = int(os.getenv("DASHBOARD_PORT", "8080"))
+DASHBOARD_PORT: int = int(os.getenv("DASHBOARD_PORT", "25825"))
 DASHBOARD_BIND: str = os.getenv("DASHBOARD_BIND", "127.0.0.1")
 SSL_CERT_PATH: str = os.getenv("SSL_CERT_PATH", "certs/cert.pem")
 SSL_KEY_PATH: str = os.getenv("SSL_KEY_PATH", "certs/key.pem")
