@@ -1,0 +1,39 @@
+services:
+  bot:
+    build: .
+    container_name: discord-musicbot
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    # Override bind address so the dashboard is reachable from outside the container
+    environment:
+      - DASHBOARD_BIND=0.0.0.0
+      - DATABASE_PATH=/app/data/database.db
+      - DASHBOARD_PORT=25825
+      - TZ=${BOT_TIMEZONE:-UTC}
+      - BOT_TIMEZONE=${BOT_TIMEZONE:-UTC}
+
+    ports:
+      - "25825:25825"
+
+    volumes:
+      # Persist the SQLite database across container rebuilds
+      - bot-data:/app/data
+
+      # Optional: mount your own certs instead of the auto-generated ones
+      # - ./certs:/app/certs:ro
+
+      # Optional: mount a cookies.txt for YouTube auth
+      # - ./cookies.txt:/app/cookies.txt:ro
+    
+    networks:
+      - proxy_net
+
+volumes:
+  bot-data:
+
+networks:
+  proxy_net:
+    external: true

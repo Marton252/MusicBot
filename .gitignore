@@ -1,0 +1,52 @@
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+*.pem
+
+# Certificates
+certs/
+
+# Database
+*.db
+*.db-journal
+
+# Spotify cache
+.cache
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Node / Dashboard
+dash-ui/node_modules/
+dash-ui/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+
+# OS
+Thumbs.db
+.DS_Store
+Desktop.ini
+._*
+
+# Docker
+*.log
+
+# Gemini / AI
+.gemini/
+
+# Cookies
+cookies.txt

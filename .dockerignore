@@ -1,0 +1,47 @@
+# Environment & Secrets
+.env
+*.pem
+certs/
+
+# Database (will be created at runtime)
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.gemini/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Node (dashboard is built in Docker)
+dash-ui/node_modules/
+dash-ui/dist/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Docs
+README.md
+FEATURES.md
+LICENSE
+
+# Misc
+.cache
+cookies.txt
+*.log
+.git
+.gitignore

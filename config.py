@@ -1,0 +1,106 @@
+import os
+import logging
+import secrets
+from dotenv import load_dotenv
+
+load_dotenv()
+
+logger = logging.getLogger('MusicBot.Config')
+
+# Discord Tokens
+DISCORD_TOKEN: str = os.getenv("DISCORD_TOKEN", "your_discord_bot_token_here")
+CLIENT_ID: str = os.getenv("CLIENT_ID", "your_client_id_here")
+GUILD_ID: int | None = None
+
+_guild_id_raw = os.getenv("GUILD_ID", None)
+if _guild_id_raw and _guild_id_raw.lower() != "null":
+    try:
+        GUILD_ID = int(_guild_id_raw)
+    except ValueError:
+        GUILD_ID = None
+
+# Spotify API
+SPOTIFY_CLIENT_ID: str = os.getenv("SPOTIFY_CLIENT_ID", "")
+SPOTIFY_CLIENT_SECRET: str = os.getenv("SPOTIFY_CLIENT_SECRET", "")
+
+# Genius API
+GENIUS_ACCESS_TOKEN: str = os.getenv("GENIUS_ACCESS_TOKEN", "")
+
+# Bot Details
+STATUS: str = os.getenv("STATUS", "🎵 Music Bot | /play")
+EMBED_COLOR: str = os.getenv("EMBED_COLOR", "#FF6B6B")
+SUPPORT_SERVER: str = os.getenv("SUPPORT_SERVER", "https://discord.gg/your_server_invite")
+WEBSITE: str = os.getenv("WEBSITE", "https://your_website.com")
+
+# Owner & Reporting
+OWNER_ID: int | None = None
+_owner_id_raw = os.getenv("OWNER_ID", None)
+if _owner_id_raw:
+    try:
+        OWNER_ID = int(_owner_id_raw)
+    except ValueError:
+        OWNER_ID = None
+
+REPORT_CHANNEL_ID: int | None = None
+_report_ch_raw = os.getenv("REPORT_CHANNEL_ID", None)
+if _report_ch_raw:
+    try:
+        REPORT_CHANNEL_ID = int(_report_ch_raw)
+    except ValueError:
+        REPORT_CHANNEL_ID = None
+
+# Audio Settings
+DEFAULT_VOLUME: int = 100
+MAX_QUEUE_SIZE: int = 100
+MAX_PLAYLIST_SIZE: int = 50
+
+# Convert color hex strings to integers for discord.Embed
+def get_embed_color() -> int:
+    try:
+        return int(EMBED_COLOR.replace("#", ""), 16)
+    except ValueError:
+        return 0xFF6B6B  # Default color
+
+# Dashboard secret key — used for cookie signing & password encryption.
+# Auto-generates if not set, but you should persist it in .env so sessions
+# survive restarts.
+_secret_key_raw = os.getenv("DASHBOARD_SECRET_KEY", "")
+if _secret_key_raw:
+    DASHBOARD_SECRET_KEY: str = _secret_key_raw
+else:
+    DASHBOARD_SECRET_KEY = secrets.token_hex(32)
+    logger.warning(
+        "DASHBOARD_SECRET_KEY is not set — generated a random key. "
+        "Sessions will NOT survive bot restarts. Set DASHBOARD_SECRET_KEY in .env to fix this."
+    )
+
+# Sharding Settings
+TOTAL_SHARDS: int | str = os.getenv("TOTAL_SHARDS", "auto")
+if isinstance(TOTAL_SHARDS, str) and TOTAL_SHARDS.lower() != "auto":
+    try:
+        TOTAL_SHARDS = int(TOTAL_SHARDS)
+    except ValueError:
+        TOTAL_SHARDS = "auto"
+
+# YouTube Cookie Settings
+COOKIES_FROM_BROWSER: str = os.getenv("COOKIES_FROM_BROWSER", "")
+COOKIES_FILE: str = os.getenv("COOKIES_FILE", "")
+
+# Web Dashboard Settings
+DASHBOARD_PORT: int = int(os.getenv("DASHBOARD_PORT", "8080"))
+DASHBOARD_BIND: str = os.getenv("DASHBOARD_BIND", "127.0.0.1")
+SSL_CERT_PATH: str = os.getenv("SSL_CERT_PATH", "certs/cert.pem")
+SSL_KEY_PATH: str = os.getenv("SSL_KEY_PATH", "certs/key.pem")
+
+# Dashboard admin credentials — refuse to use known-weak password defaults
+DASHBOARD_ADMIN_USER: str = os.getenv("DASHBOARD_ADMIN_USER", "admin")
+_INSECURE_DEFAULTS = {"admin123", "password", "admin", "CHANGE_ME_TO_A_STRONG_PASSWORD", ""}
+_dashboard_pw = os.getenv("DASHBOARD_ADMIN_PASSWORD", "")
+if _dashboard_pw in _INSECURE_DEFAULTS:
+    logger.warning(
+        "DASHBOARD_ADMIN_PASSWORD is not set or uses a known-insecure default! "
+        "The web dashboard will be DISABLED until a strong password is set in .env"
+    )
+    DASHBOARD_ADMIN_PASSWORD: str | None = None
+else:
+    DASHBOARD_ADMIN_PASSWORD = _dashboard_pw
