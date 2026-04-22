@@ -21,8 +21,9 @@ class LyricsService:
         if GENIUS_ACCESS_TOKEN:
             try:
                 self.genius = lyricsgenius.Genius(
-                    GENIUS_ACCESS_TOKEN, verbose=False, remove_section_headers=True,
+                    GENIUS_ACCESS_TOKEN, remove_section_headers=True,
                 )
+                self.genius.verbose = False
                 logger.info("Genius API configured.")
             except Exception as e:
                 logger.error("Failed to configure Genius API: %s", e)
