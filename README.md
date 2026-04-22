@@ -419,7 +419,7 @@ When applied mid-track, the bot calculates elapsed time (accounting for pause/re
 
 ## 📊 Web Dashboard
 
-Access at `https://127.0.0.1:8080` after starting the bot.
+Access at `https://<your-ip>:25825` after starting the bot (port configurable via `DASHBOARD_PORT` in `.env`).
 
 ### Live Telemetry
 
@@ -478,7 +478,7 @@ cp docker-compose.example.yml docker-compose.yml
 docker compose up -d
 ```
 
-The dashboard is available at `https://localhost:25825`.
+The dashboard is available at `https://<your-server-ip>:25825` (or `https://localhost:25825` if running locally).
 
 ### Docker Compose Configuration
 
