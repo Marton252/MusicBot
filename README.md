@@ -66,13 +66,7 @@ Optional (but recommended):
 - `REPORT_CHANNEL_ID` — dedicated channel for bug reports
 - `DASHBOARD_SECRET_KEY` — persists dashboard sessions across restarts
 
-### 3. Generate SSL Certificate (for Dashboard)
-
-```bash
-python generate_cert.py
-```
-
-### 4. Build the Dashboard UI
+### 3. Build the Dashboard UI
 
 ```bash
 cd dash-ui
@@ -81,13 +75,14 @@ npm run build
 cd ..
 ```
 
-### 5. Run
+### 4. Run
 
 ```bash
 python bot.py
 ```
 
 The launcher manages the bot as a subprocess and handles restarts automatically.
+SSL certificates are **auto-generated** on first run if not already present.
 
 ---
 

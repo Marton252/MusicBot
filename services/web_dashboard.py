@@ -657,6 +657,16 @@ class DashboardServer:
         config.logconfig = None
 
         dash_logger = logging.getLogger('MusicBot.Dashboard')
+        if not (os.path.exists(self.cert_path) and os.path.exists(self.key_path)):
+            dash_logger.info("SSL certs not found — auto-generating self-signed certificate...")
+            try:
+                from generate_cert import generate_certificate
+                cert_dir = os.path.dirname(self.cert_path) or 'certs'
+                generate_certificate(cert_dir)
+                dash_logger.info("Self-signed certificate generated successfully.")
+            except Exception as e:
+                dash_logger.error("Failed to auto-generate certificate: %s", e)
+
         if os.path.exists(self.cert_path) and os.path.exists(self.key_path):
             config.certfile = self.cert_path
             config.keyfile = self.key_path
@@ -666,7 +676,8 @@ class DashboardServer:
             )
         else:
             dash_logger.warning(
-                "SSL certs not found! Run generate_cert.py or provide cert/key paths."
+                "SSL certs not found and auto-generation failed! "
+                "Run generate_cert.py manually or provide cert/key paths."
             )
             dash_logger.warning(
                 "Dashboard running INSECURELY on http://%s:%s", self.bind, self.port,
