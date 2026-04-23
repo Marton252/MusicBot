@@ -6,6 +6,10 @@ certs/
 # Database (will be created at runtime)
 *.db
 
+# CI/CD & Config
+.github/
+.python-version
+
 # Python
 __pycache__/
 *.py[cod]

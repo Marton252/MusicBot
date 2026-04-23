@@ -14,6 +14,9 @@ certs/
 # Spotify cache
 .cache
 
+# Runtime data
+data/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -45,6 +48,7 @@ Desktop.ini
 # Docker
 *.log
 docker-compose.yml
+!docker-compose.example.yml
 
 # Gemini / AI
 .gemini/
