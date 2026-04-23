@@ -4,7 +4,8 @@ import aiosqlite
 import logging
 
 logger = logging.getLogger('MusicBot.Database')
-DB_PATH = os.getenv('DATABASE_PATH', 'database.db')
+_docker = os.path.exists("/.dockerenv")
+DB_PATH = os.getenv('DATABASE_PATH', '/app/data/database.db' if _docker else 'database.db')
 
 
 class Database:

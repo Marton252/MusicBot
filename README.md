@@ -1,6 +1,14 @@
 # 🎵 Discord Music Bot
 
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://python.org)
+[![License](https://img.shields.io/github/license/Marton252/MusicBot?color=blue)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/Marton252/MusicBot/ci.yml?label=CI&logo=github)](https://github.com/Marton252/MusicBot/actions)
+[![CodeQL](https://img.shields.io/badge/CodeQL-Enabled-brightgreen?logo=github)](https://github.com/Marton252/MusicBot/security/code-scanning)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?logo=docker&logoColor=white)](https://ghcr.io/marton252/musicbot)
+
 A feature-rich, multi-server Discord music bot with real-time audio streaming, interactive player panels, audio filters, lyrics from Genius, multilingual support, a secure React web dashboard, and a built-in bug reporting system.
+
+**Built with:** Python · discord.py · FFmpeg · yt-dlp · React · Vite · Tailwind CSS · Quart · Hypercorn
 
 ---
 
@@ -457,27 +465,32 @@ Access at `https://<your-ip>:25825` after starting the bot (port configurable vi
 
 ### Quick Start (Recommended)
 
-Pull the pre-built image from GitHub Container Registry — no build required:
+Pull the pre-built image from GitHub Container Registry — **no cloning required**:
 
 ```bash
-# 1. Clone the repo (for .env.example and docker-compose)
-git clone https://github.com/Marton252/MusicBot.git
-cd MusicBot
+# 1. Create a directory and download the config files
+mkdir musicbot && cd musicbot
+curl -O https://raw.githubusercontent.com/Marton252/MusicBot/main/.env.example
+curl -O https://raw.githubusercontent.com/Marton252/MusicBot/main/docker-compose.example.yml
 
-# 2. Create your .env file
+# 2. Configure
 cp .env.example .env
-# Edit .env with your DISCORD_TOKEN and DASHBOARD_ADMIN_PASSWORD
-
-# 3. Start with Docker Compose
 cp docker-compose.example.yml docker-compose.yml
+# Edit .env — set at minimum: DISCORD_TOKEN and DASHBOARD_ADMIN_PASSWORD
+
+# 3. Run
 docker compose up -d
 ```
 
-The dashboard is available at `https://<your-server-ip>:25825` (or `https://localhost:25825` if running locally).
+> **Note:** All config lives in `.env` — no Docker-specific overrides needed.
+> The bot defaults to `DASHBOARD_BIND=0.0.0.0` and auto-detects the Docker database path.
+
+The dashboard is available at `https://<your-server-ip>:25825`.
+SSL certificates are **auto-generated** on first boot.
 
 ### Docker Compose Configuration
 
-The included `docker-compose.example.yml` uses the pre-built image:
+The `docker-compose.example.yml` uses the pre-built image:
 
 ```yaml
 services:
@@ -488,14 +501,12 @@ services:
     env_file:
       - .env
     environment:
-      - DASHBOARD_BIND=0.0.0.0
-      - DATABASE_PATH=/app/data/database.db
       - TZ=${BOT_TIMEZONE:-UTC}
     ports:
       - "${DASHBOARD_PORT:-25825}:${DASHBOARD_PORT:-25825}"
     volumes:
       - bot-data:/app/data
-      # - ./certs:/app/certs:ro        # Optional: custom TLS certs
+      # - ./certs:/app/certs:ro              # Optional: custom TLS certs
       # - ./cookies.txt:/app/cookies.txt:ro  # Optional: YouTube cookies
 
 volumes:
@@ -504,12 +515,15 @@ volumes:
 
 ### Manual Docker Run
 
+If you prefer not to use Docker Compose:
+
 ```bash
+# 1. Download and configure .env (see Quick Start above)
+
+# 2. Run
 docker run -d \
   --name discord-musicbot \
   --env-file .env \
-  -e DASHBOARD_BIND=0.0.0.0 \
-  -e DATABASE_PATH=/app/data/database.db \
   -p 25825:25825 \
   -v musicbot-data:/app/data \
   --restart unless-stopped \
@@ -518,33 +532,39 @@ docker run -d \
 
 ### Build from Source
 
-If you prefer to build the image locally instead of using the pre-built one:
+If you prefer to build the image locally instead of pulling the pre-built one:
 
 ```bash
+git clone https://github.com/Marton252/MusicBot.git
+cd MusicBot
+cp .env.example .env
+# Edit .env with your tokens
+
 # Using Docker Compose
-docker compose -f docker-compose.yml up -d --build
+docker compose up -d --build
 
 # Or manually
 docker build -t discord-musicbot .
-docker run -d --env-file .env -p 25825:25825 discord-musicbot
+docker run -d --env-file .env -p 25825:25825 -v musicbot-data:/app/data discord-musicbot
 ```
 
 ### Available Tags
 
-| Tag | Description |
-| --- | --- |
-| `latest` | Most recent stable release |
-| `1.0.0` | Specific version |
-| `1.0` | Latest patch of minor version |
-| `1` | Latest minor of major version |
+| Tag      | Description                   |
+| -------- | ----------------------------- |
+| `latest` | Most recent stable release    |
+| `1.0.0`  | Specific version              |
+| `1.0`    | Latest patch of minor version |
+| `1`      | Latest minor of major version |
 
 ### Useful Commands
 
 ```bash
-docker compose logs -f        # Follow live logs
-docker compose restart         # Restart the bot
+docker compose logs -f                       # Follow live logs
+docker compose restart                       # Restart the bot
 docker compose pull && docker compose up -d  # Update to latest version
-docker compose down            # Stop and remove container
+docker compose down                          # Stop and remove container
+docker compose exec bot python -c "print('ok')"  # Test container health
 ```
 
 ---

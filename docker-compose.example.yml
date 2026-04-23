@@ -13,22 +13,15 @@ services:
     container_name: discord-musicbot
     restart: unless-stopped
 
-    # Load all variables from your .env file
+    # All config comes from .env — no overrides needed.
+    # Defaults: DASHBOARD_BIND=0.0.0.0, DATABASE_PATH=/app/data/database.db (in Docker)
     env_file:
       - .env
 
-    # Overrides that make sense inside Docker
     environment:
-      # Bind to all interfaces so the dashboard is reachable from outside the container
-      - DASHBOARD_BIND=0.0.0.0
-      # Store the database in the persistent volume
-      - DATABASE_PATH=/app/data/database.db
-      # Sync container timezone with bot timezone (falls back to UTC)
       - TZ=${BOT_TIMEZONE:-UTC}
 
     ports:
-      # Map dashboard port to the host
-      # Change the left side if you want a different host port
       - "${DASHBOARD_PORT:-25825}:${DASHBOARD_PORT:-25825}"
 
     volumes:
