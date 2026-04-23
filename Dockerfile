@@ -4,7 +4,7 @@
 # ═══════════════════════════════════════════════════════════════════
 
 # ─── Stage 1: Build the React dashboard ─────────────────────────
-FROM node:22-slim AS dash-builder
+FROM node:25-slim AS dash-builder
 
 WORKDIR /build
 COPY dash-ui/package.json dash-ui/package-lock.json* ./
