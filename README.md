@@ -98,50 +98,57 @@ SSL certificates are **auto-generated** on first run if not already present.
 
 ### System Overview
 
-```
-                    ┌─────────────────────────────────────────────────┐
-                    │                   bot.py                        │
-                    │  ┌─────────────┐     ┌───────────────────────┐  │
-                    │  │  Launcher   │────▶│  MusicBot (--run)     │  │
-                    │  │ (subprocess │     │  AutoShardedBot       │  │
-                    │  │  manager)   │◀────│  exit(42) = restart   │  │
-                    │  └─────────────┘     └───────────┬───────────┘  │
-                    └─────────────────────────────────┬───────────────┘
-                                                      │
-                    ┌─────────────────────────────────┼───────────────┐
-                    │              setup_hook()        │               │
-                    │                                  ▼               │
-            ┌───────┴───────┐              ┌──────────────────┐       │
-            │   Cogs        │              │  Web Dashboard   │       │
-            │               │              │  (Quart+Hypercorn│       │
-            │ ┌───────────┐ │              │   HTTPS/H2/H3)  │       │
-            │ │ general.py│ │              └────────┬─────────┘       │
-            │ └───────────┘ │                       │                 │
-            │ ┌───────────┐ │              ┌────────┴─────────┐       │
-            │ │ music.py  │ │              │  dash-ui (React) │       │
-            │ └─────┬─────┘ │              │  Vite+Tailwind   │       │
-            └───────┼───────┘              └──────────────────┘       │
-                    │                                                  │
-    ┌───────────────┼──────────────────────────────────────────────────┘
-    │               ▼
-    │    ┌─────────────────────────── Services ─────────────────────────┐
-    │    │                                                              │
-    │    │  ┌──────────────┐  ┌────────────┐  ┌────────────────────┐   │
-    │    │  │ extractor.py │  │ player.py  │  │  web_dashboard.py  │   │
-    │    │  │ yt-dlp+Spotify│  │ FFmpeg     │  │  REST+WebSocket    │   │
-    │    │  │ Thread Pool  │  │ Per-guild  │  │  Auth+RBAC         │   │
-    │    │  └──────┬───────┘  └─────┬──────┘  └────────┬───────────┘   │
-    │    │         │                │                   │               │
-    │    │  ┌──────┴───────┐  ┌─────┴──────┐  ┌────────┴───────────┐   │
-    │    │  │ language.py  │  │ lyrics.py  │  │   database.py      │   │
-    │    │  │ i18n Manager │  │ Genius API │  │   SQLite (async)   │   │
-    │    │  └──────────────┘  └────────────┘  └────────────────────┘   │
-    │    └──────────────────────────────────────────────────────────────┘
-    │
-    ▼
-┌──────────────────── External APIs ────────────────────┐
-│  YouTube (yt-dlp)  │  SoundCloud (yt-dlp)  │  Spotify │  Genius  │
-└────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph BOT["bot.py"]
+        LAUNCHER["Launcher<br/>(subprocess manager)"]
+        MUSICBOT["MusicBot --run<br/>AutoShardedBot"]
+        LAUNCHER -- "start" --> MUSICBOT
+        MUSICBOT -- "exit(42) = restart" --> LAUNCHER
+    end
+
+    MUSICBOT --> SETUP["setup_hook()"]
+
+    subgraph COGS["Cogs"]
+        GENERAL["general.py"]
+        MUSIC["music.py"]
+    end
+
+    subgraph DASHBOARD["Web Dashboard"]
+        QUART["Quart + Hypercorn<br/>HTTPS / H2 / H3"]
+        DASHUI["dash-ui<br/>React + Vite + Tailwind"]
+        QUART --> DASHUI
+    end
+
+    SETUP --> COGS
+    SETUP --> DASHBOARD
+
+    subgraph SERVICES["Services"]
+        EXTRACTOR["extractor.py<br/>yt-dlp + Spotify<br/>Thread Pool (4)"]
+        PLAYER["player.py<br/>FFmpeg<br/>Per-guild"]
+        WEBDASH["web_dashboard.py<br/>REST + WebSocket<br/>Auth + RBAC"]
+        LANG["language.py<br/>i18n Manager"]
+        LYRICS["lyrics.py<br/>Genius API"]
+        DB["database.py<br/>SQLite (async)"]
+
+        EXTRACTOR --> LANG
+        PLAYER --> LYRICS
+        WEBDASH --> DB
+    end
+
+    MUSIC --> SERVICES
+
+    subgraph APIS["External APIs"]
+        YT["YouTube (yt-dlp)"]
+        SC["SoundCloud (yt-dlp)"]
+        SP["Spotify"]
+        GN["Genius"]
+    end
+
+    EXTRACTOR --> YT
+    EXTRACTOR --> SC
+    EXTRACTOR --> SP
+    LYRICS --> GN
 ```
 
 ### File Map
@@ -188,8 +195,10 @@ Musicbot/
 │   ├── database.py         # Async SQLite via aiosqlite
 │   │                       #   Guild language settings (with in-memory cache)
 │   │                       #   Dashboard user CRUD (multi-user RBAC)
+│   │                       #   Auto-detects Docker for database path
 │   │
 │   └── web_dashboard.py    # Quart HTTPS server
+│                           #   Auto-generates self-signed SSL certs on first run
 │                           #   HMAC-signed stateless session cookies
 │                           #   Rate-limited login (5 attempts/60s)
 │                           #   WebSocket: live stats (1s interval) + log streaming
@@ -204,61 +213,81 @@ Musicbot/
 ├── dash-ui/                # React + Vite + Tailwind CSS v4 frontend
 │   └── dist/               # Production build (served by Quart)
 │
+├── .github/                # GitHub automation
+│   ├── dependabot.yml      # Grouped dependency updates (pip, npm, actions, docker)
+│   ├── labeler.yml         # Auto-label PRs by changed file paths
+│   └── workflows/
+│       ├── ci.yml              # Lint (Python + ESLint), secret scan (Gitleaks), Docker build test
+│       ├── docker-publish.yml  # Build & push image to GHCR on release
+│       ├── ai-issue-summary.yml  # AI-powered issue summarization
+│       ├── greetings.yml       # Welcome first-time contributors
+│       └── labeler.yml         # PR auto-labeling trigger
+│
 ├── .env                    # Environment configuration (not committed)
 ├── .env.example            # Template with all available settings
+├── .python-version         # Python version pin (3.12)
+├── .gitignore              # Git ignore rules
+├── .dockerignore           # Docker build context exclusions
 ├── requirements.txt        # Python dependencies
-├── Dockerfile              # Container build
-├── docker-compose.yml      # Docker Compose orchestration
+├── Dockerfile              # Multi-stage container build (Node + Python)
+├── docker-compose.example.yml  # Docker Compose template (no clone needed)
+├── docker-compose.yml      # Docker Compose orchestration (not committed)
 ├── generate_cert.py        # Self-signed certificate generator
+├── LICENSE                 # MIT License
 └── database.db             # SQLite database (auto-created)
 ```
 
 ### Data Flow: Playing a Song
 
-```
-User: /play "Blinding Lights"
-         │
-         ▼
-    ┌─ music.py: play() ─────────────────────────────────────────────┐
-    │  1. Defer interaction                                          │
-    │  2. Connect to voice channel (if needed)                       │
-    │  3. Get/create PlayerManager guild player                      │
-    └────────────────────────┬────────────────────────────────────────┘
-                             │
-                             ▼
-    ┌─ extractor.py: extract_info() ─────────────────────────────────┐
-    │  Detect input type:                                            │
-    │  ├─ Spotify link → resolve via API → multi_search()            │
-    │  ├─ Direct URL → _extract_url() (yt-dlp)                      │
-    │  └─ Text query → _multi_search()                               │
-    │                                                                 │
-    │  _multi_search():                                              │
-    │    ├─ Task 1: ytsearch:"Blinding Lights" (YouTube)   ─┐       │
-    │    ├─ Task 2: scsearch:"Blinding Lights" (SoundCloud) ├─ parallel
-    │    └─ Task 3: sp.search("Blinding Lights") (Spotify)  ─┘       │
-    │                                                                 │
-    │  Score each result:                                            │
-    │    score = title_similarity × 10                               │
-    │          + duration_bonus (2.0)                                 │
-    │          + thumbnail_bonus (1.0)                                │
-    │          + uploader_bonus (0.5)                                 │
-    │          + spotify_match_bonus (3.0)                            │
-    │                                                                 │
-    │  Return best scoring result with stream URL                    │
-    └────────────────────────┬────────────────────────────────────────┘
-                             │
-                             ▼
-    ┌─ player.py: enqueue() + player_loop() ─────────────────────────┐
-    │  1. Add track to deque (max 100)                               │
-    │  2. Signal _queue_ready event                                  │
-    │  3. player_loop() picks up track                               │
-    │  4. Build FFmpeg source (with filters + seek if applicable)    │
-    │  5. voice_client.play(source)                                  │
-    │  6. Send Now Playing panel via cog.send_np_panel()             │
-    │  7. Wait for track end (next event)                            │
-    │  8. If repeat: re-enqueue at front                             │
-    │  9. If queue empty: wait 5 min → auto-disconnect               │
-    └────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    USER["User: /play 'Blinding Lights'"] --> PLAY
+
+    subgraph PLAY["music.py: play()"]
+        P1["1. Defer interaction"]
+        P2["2. Connect to voice channel"]
+        P3["3. Get/create guild player"]
+        P1 --> P2 --> P3
+    end
+
+    PLAY --> EXTRACT
+
+    subgraph EXTRACT["extractor.py: extract_info()"]
+        DETECT{"Detect input type"}
+        DETECT -->|Spotify link| RESOLVE["Resolve via Spotify API"]
+        DETECT -->|Direct URL| YTDL["_extract_url() via yt-dlp"]
+        DETECT -->|Text query| MULTI["_multi_search()"]
+
+        RESOLVE --> MULTI
+
+        subgraph PARALLEL["Parallel Search"]
+            T1["ytsearch: YouTube"]
+            T2["scsearch: SoundCloud"]
+            T3["sp.search: Spotify metadata"]
+        end
+
+        MULTI --> PARALLEL
+
+        SCORE["Score results:<br/>title_similarity × 10<br/>+ duration (2.0)<br/>+ thumbnail (1.0)<br/>+ uploader (0.5)<br/>+ spotify_match (3.0)"]
+        PARALLEL --> SCORE
+        SCORE --> BEST["Return best result + stream URL"]
+    end
+
+    EXTRACT --> PLAYERLOOP
+
+    subgraph PLAYERLOOP["player.py: enqueue() + player_loop()"]
+        E1["1. Add to deque (max 100)"]
+        E2["2. Signal _queue_ready event"]
+        E3["3. Build FFmpeg source + filters"]
+        E4["4. voice_client.play(source)"]
+        E5["5. Send Now Playing panel"]
+        E6["6. Wait for track end"]
+        E7{"Next?"}
+        E1 --> E2 --> E3 --> E4 --> E5 --> E6 --> E7
+        E7 -->|Repeat| E3
+        E7 -->|Queue has tracks| E1
+        E7 -->|Empty 5 min| DC["Auto-disconnect"]
+    end
 ```
 
 ### Message Lifecycle
