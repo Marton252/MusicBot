@@ -1,0 +1,34 @@
+# ═══════════════════════════════════════════════════════════════════
+# Greetings — Welcome first-time contributors
+# ═══════════════════════════════════════════════════════════════════
+
+name: Greetings
+
+on:
+  pull_request_target:
+  issues:
+    types: [opened]
+
+jobs:
+  greeting:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/first-interaction@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          issue-message: |
+            👋 Thanks for opening your first issue on MusicBot!
+            We'll take a look as soon as possible. In the meantime, please make sure you've included:
+            - Your Python version (`python --version`)
+            - Bot log output (if reporting a bug)
+            - Steps to reproduce the issue
+          pr-message: |
+            🎉 Thanks for your first pull request to MusicBot!
+            A maintainer will review it shortly. Please make sure:
+            - All CI checks pass
+            - Your changes follow the existing code style
+            - You've tested your changes locally

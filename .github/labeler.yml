@@ -1,0 +1,53 @@
+# ═══════════════════════════════════════════════════════════════════
+# Pull Request Labeler — Configuration
+# Auto-labels PRs based on changed file paths
+# ═══════════════════════════════════════════════════════════════════
+
+python:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.py"
+          - "requirements.txt"
+
+javascript:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "dash-ui/**"
+
+docker:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Dockerfile"
+          - "docker-compose*.yml"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "*.md"
+          - "docs/**"
+          - "LICENSE"
+
+bot-core:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "bot.py"
+          - "config.py"
+          - "cogs/**"
+
+dashboard:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "services/web_dashboard.py"
+          - "dash-ui/**"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "requirements.txt"
+          - "dash-ui/package.json"
+          - "dash-ui/package-lock.json"
