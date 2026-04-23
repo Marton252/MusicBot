@@ -76,7 +76,7 @@ function LogLine({ text }: { text: string }) {
   }
 
   if (lastIndex < text.length) {
-    parts.push(<span key={keyIdx++}>{text.slice(lastIndex)}</span>);
+    parts.push(<span key={keyIdx}>{text.slice(lastIndex)}</span>);
   }
 
   return <>{parts}</>;
