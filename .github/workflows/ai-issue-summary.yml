@@ -18,11 +18,11 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run AI inference
         id: inference
-        uses: actions/ai-inference@v1
+        uses: actions/ai-inference@v2
         with:
           prompt: |
             You are summarizing an issue for the MusicBot Discord bot project.
