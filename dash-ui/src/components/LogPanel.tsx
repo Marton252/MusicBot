@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { ListFilter, Trash2 } from 'lucide-react';
 import type { Copy } from '../i18n';
 
@@ -20,6 +21,7 @@ function LogLine({ text }: { text: string }) {
 }
 
 export function LogPanel({ logs, t }: { logs: string[]; t: Copy }) {
+  const reduceMotion = useReducedMotion();
   const [level, setLevel] = useState<Level>('ALL');
   const [localClearIndex, setLocalClearIndex] = useState(0);
   const [follow, setFollow] = useState(true);
@@ -34,7 +36,12 @@ export function LogPanel({ logs, t }: { logs: string[]; t: Copy }) {
   }, [follow, visibleLogs.length]);
 
   return (
-    <section className="rounded-lg border border-panel bg-black shadow-panel">
+    <motion.section
+      className="rounded-lg border border-panel bg-black shadow-panel"
+      initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+    >
       <div className="flex flex-col gap-3 border-b border-panel px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-ok" />
@@ -74,12 +81,18 @@ export function LogPanel({ logs, t }: { logs: string[]; t: Copy }) {
       <div className="h-80 overflow-y-auto p-4 font-mono text-xs leading-6 text-slate-200 sm:h-96">
         {visibleLogs.length === 0 && <div className="text-muted">{t.noLogs}</div>}
         {visibleLogs.map((log, index) => (
-          <div key={`${index}-${log}`} className="break-words">
+          <motion.div
+            key={`${index}-${log}`}
+            className="break-words"
+            initial={reduceMotion ? false : { opacity: 0, y: 3 }}
+            animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+            transition={{ duration: 0.14 }}
+          >
             <LogLine text={log} />
-          </div>
+          </motion.div>
         ))}
         <div ref={endRef} />
       </div>
-    </section>
+    </motion.section>
   );
 }

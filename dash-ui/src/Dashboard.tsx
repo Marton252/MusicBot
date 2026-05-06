@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Activity, Music, Server, Users } from 'lucide-react';
 import { copy } from './i18n';
 import type { DashUser, HistoryPoint, Language, Stats } from './types';
@@ -35,6 +36,7 @@ export default function Dashboard({
   onLogout: () => void;
 }) {
   const t = useMemo(() => copy[language], [language]);
+  const reduceMotion = useReducedMotion();
   const [stats, setStats] = useState<Stats | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
@@ -171,14 +173,24 @@ export default function Dashboard({
       />
 
       <main className="mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:px-6 sm:py-6">
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <motion.section
+          className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+          initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+          animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+        >
           <MetricCard icon={<Server className="h-5 w-5" />} label={t.servers} value={stats?.guilds} />
           <MetricCard icon={<Users className="h-5 w-5" />} label={t.totalUsers} value={stats?.users} />
           <MetricCard icon={<Music className="h-5 w-5" />} label={t.activeVoice} value={stats?.voice_clients} />
           <MetricCard icon={<Activity className="h-5 w-5" />} label={t.ping} value={stats ? `${stats.ping}ms` : undefined} />
-        </section>
+        </motion.section>
 
-        <section className="grid gap-4 xl:grid-cols-[380px_1fr]">
+        <motion.section
+          className="grid gap-4 xl:grid-cols-[380px_1fr]"
+          initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+          animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+          transition={{ duration: 0.22, delay: reduceMotion ? 0 : 0.04, ease: 'easeOut' }}
+        >
           <StatusPanel stats={stats} wsStatus={wsStatus} t={t} />
           <PerformancePanel
             history={history}
@@ -187,44 +199,62 @@ export default function Dashboard({
             t={t}
             onRangeChange={setTimeRange}
           />
-        </section>
+        </motion.section>
 
         {user.can_view_logs && <LogPanel logs={logs} t={t} />}
         {user.is_admin && <UserManagementPanel t={t} />}
       </main>
 
-      {showDisconnect && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 p-4">
-          <div className="rounded-lg border border-panel bg-surface p-6 text-center shadow-panel">
-            <Activity className="mx-auto mb-3 h-8 w-8 animate-pulse text-accent" />
-            <h2 className="text-lg font-semibold">{t.connectionLost}</h2>
-            <p className="mt-1 text-sm text-muted">{t.reconnecting}</p>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {showDisconnect && (
+          <motion.div
+            className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 p-4"
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={reduceMotion ? undefined : { opacity: 1 }}
+            exit={reduceMotion ? undefined : { opacity: 0 }}
+            transition={{ duration: 0.16 }}
+          >
+            <motion.div
+              className="rounded-lg border border-panel bg-surface p-6 text-center shadow-panel"
+              initial={reduceMotion ? false : { opacity: 0, scale: 0.98, y: 8 }}
+              animate={reduceMotion ? undefined : { opacity: 1, scale: 1, y: 0 }}
+              exit={reduceMotion ? undefined : { opacity: 0, scale: 0.98, y: 8 }}
+              transition={{ duration: 0.18 }}
+            >
+              <Activity className="mx-auto mb-3 h-8 w-8 animate-pulse text-accent" />
+              <h2 className="text-lg font-semibold">{t.connectionLost}</h2>
+              <p className="mt-1 text-sm text-muted">{t.reconnecting}</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {restartOpen && (
-        <ConfirmDialog
-          title={t.restartTitle}
-          body={t.restartBody}
-          confirmLabel={t.restartShort}
-          tone="danger"
-          t={t}
-          onCancel={() => setRestartOpen(false)}
-          onConfirm={confirmRestart}
-        />
-      )}
+      <AnimatePresence>
+        {restartOpen && (
+          <ConfirmDialog
+            title={t.restartTitle}
+            body={t.restartBody}
+            confirmLabel={t.restartShort}
+            tone="danger"
+            t={t}
+            onCancel={() => setRestartOpen(false)}
+            onConfirm={confirmRestart}
+          />
+        )}
+      </AnimatePresence>
 
-      {logoutOpen && (
-        <ConfirmDialog
-          title={t.logoutTitle}
-          body={t.logoutBody}
-          confirmLabel={t.logout}
-          t={t}
-          onCancel={() => setLogoutOpen(false)}
-          onConfirm={confirmLogout}
-        />
-      )}
+      <AnimatePresence>
+        {logoutOpen && (
+          <ConfirmDialog
+            title={t.logoutTitle}
+            body={t.logoutBody}
+            confirmLabel={t.logout}
+            t={t}
+            onCancel={() => setLogoutOpen(false)}
+            onConfirm={confirmLogout}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

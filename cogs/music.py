@@ -211,6 +211,22 @@ async def _build_np_view(player: MusicPlayer, guild_id: int) -> MusicControlView
     )
 
 
+async def _track_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    player = manager.get_existing_player(interaction.guild_id)
+    choices: list[app_commands.Choice[str]] = []
+    if player and player.current:
+        title = player.current.get("title", "")
+        url = player.current.get("webpage_url", "")
+        if title and current.lower() in title.lower():
+            choices.append(app_commands.Choice(name=f"Replay: {title}"[:100], value=url or title))
+    if current:
+        choices.append(app_commands.Choice(name=f"Search: {current}"[:100], value=current[:100]))
+    return choices[:25]
+
+
 # ────────────────────────────────────────────────────────────────────────────────
 # Volume Select Menu
 # ────────────────────────────────────────────────────────────────────────────────
@@ -579,6 +595,139 @@ class Music(commands.Cog):
         session = sessions.for_player(player)
         await session.ui.upsert_panel(embed=embed, view=view)
 
+    async def _handle_queue_action(
+        self,
+        interaction: discord.Interaction,
+        action: app_commands.Choice[str],
+        index: int | None = None,
+        target: int | None = None,
+    ) -> None:
+        player = manager.get_existing_player(interaction.guild_id)
+        if action.value == "view":
+            await self._send_queue(interaction)
+            return
+
+        if not await _require_player_control(interaction, player, require_current=False):
+            return
+
+        if action.value == "clear":
+            player.queue.clear()
+            msg = await language.get_string(interaction.guild_id, "msg_queue_cleared")
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
+        if index is None or index < 1 or index > len(player.queue):
+            msg = await language.get_string(interaction.guild_id, "msg_queue_invalid_index")
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
+        if action.value == "remove":
+            removed = player.queue.remove_at(index - 1)
+            msg = await language.get_string(
+                interaction.guild_id,
+                "msg_queue_removed",
+                title=removed.get("title", "Unknown Title"),
+            )
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
+        if target is None or target < 1 or target > len(player.queue):
+            msg = await language.get_string(interaction.guild_id, "msg_queue_invalid_index")
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
+        player.queue.move(index - 1, target - 1)
+        msg = await language.get_string(interaction.guild_id, "msg_queue_moved", index=index, target=target)
+        await interaction.response.send_message(msg, ephemeral=True)
+
+    async def _send_queue(self, interaction: discord.Interaction) -> None:
+        player = manager.get_existing_player(interaction.guild_id)
+        if not player or not player.queue:
+            msg = await language.get_string(interaction.guild_id, "msg_queue_empty")
+            await interaction.response.send_message(msg)
+            sent = await interaction.original_response()
+            _schedule_delete(sent)
+            return
+
+        embed = await _build_queue_embed(player, interaction.guild_id, self.bot.embed_color)
+        await interaction.response.send_message(embed=embed)
+        sent = await interaction.original_response()
+        _schedule_delete(sent, delay=30)
+
+    async def _save_queue(self, interaction: discord.Interaction, name: str) -> None:
+        player = manager.get_existing_player(interaction.guild_id)
+        if not await _require_player_control(interaction, player, require_current=False):
+            return
+
+        items = [
+            item.to_saved_record(position)
+            for position, item in enumerate(player.queue.to_saved_items(player.current), start=1)
+            if item.webpage_url
+        ]
+        if not items:
+            msg = await language.get_string(interaction.guild_id, "msg_queue_empty")
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
+        await interaction.client.db.save_music_queue(interaction.guild_id, name[:64], interaction.user.id, items)
+        msg = await language.get_string(interaction.guild_id, "msg_queue_saved", name=name[:64], count=len(items))
+        await interaction.response.send_message(msg, ephemeral=True)
+
+    async def _load_queue(self, interaction: discord.Interaction, name: str) -> None:
+        if not interaction.user.voice:
+            msg = await language.get_string(interaction.guild_id, "msg_error_voice_required")
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
+        rows = await interaction.client.db.load_saved_music_queue(interaction.guild_id, name[:64])
+        if not rows:
+            msg = await language.get_string(interaction.guild_id, "msg_saved_queue_not_found")
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        if not interaction.guild.voice_client:
+            try:
+                await manager.connect_to_voice(interaction.user.voice.channel)
+            except RuntimeError as exc:
+                return await interaction.followup.send(str(exc), ephemeral=True)
+        elif interaction.guild.voice_client.channel != interaction.user.voice.channel:
+            msg = await language.get_string(interaction.guild_id, "msg_error_same_voice_required")
+            await interaction.followup.send(msg, ephemeral=True)
+            return
+
+        session = await sessions.for_guild(interaction, cog=self)
+        added = 0
+        for row in rows:
+            info = await _resolve_track(row["webpage_url"], requester_id=interaction.user.id)
+            if not info:
+                info = QueueItem(
+                    title=row["title"],
+                    webpage_url=row["webpage_url"],
+                    stream_url=None,
+                    requester_id=interaction.user.id,
+                    duration=row["duration"],
+                    source=row["source"],
+                ).to_track()
+            if await session.queue.add(info, requester=interaction.user.id):
+                added += 1
+            else:
+                break
+
+        msg = await language.get_string(interaction.guild_id, "msg_queue_loaded", name=name[:64], count=added)
+        await interaction.followup.send(msg, ephemeral=True)
+
+    async def _list_saved_queues(self, interaction: discord.Interaction) -> None:
+        queues = await interaction.client.db.list_saved_music_queues(interaction.guild_id)
+        if not queues:
+            msg = await language.get_string(interaction.guild_id, "msg_saved_queues_empty")
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
+        lines = [f"**{q['name']}** - {q['item_count']} tracks" for q in queues[:20]]
+        embed = discord.Embed(title="Saved Queues", description="\n".join(lines), color=self.bot.embed_color)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @commands.Cog.listener()
     async def on_voice_state_update(
         self,
@@ -633,6 +782,7 @@ class Music(commands.Cog):
 
     @app_commands.guild_only()
     @app_commands.command(name="play", description="Play a song from YouTube, Spotify, or SoundCloud.")
+    @app_commands.autocomplete(query=_track_autocomplete)
     async def play(self, interaction: discord.Interaction, query: str) -> None:
         # LOW-8: Reject excessively long queries to prevent resource abuse
         if len(query) > 200:
@@ -792,20 +942,21 @@ class Music(commands.Cog):
         _schedule_delete(sent)
 
     @app_commands.guild_only()
-    @app_commands.command(name="queue", description="Displays the current music queue.")
-    async def queue(self, interaction: discord.Interaction) -> None:
-        player = manager.get_existing_player(interaction.guild_id)
-        if not player or not player.queue:
-            msg = await language.get_string(interaction.guild_id, "msg_queue_empty")
-            await interaction.response.send_message(msg)
-            sent = await interaction.original_response()
-            _schedule_delete(sent)
-            return
-
-        embed = await _build_queue_embed(player, interaction.guild_id, self.bot.embed_color)
-        await interaction.response.send_message(embed=embed)
-        sent = await interaction.original_response()
-        _schedule_delete(sent, delay=30)
+    @app_commands.command(name="queue", description="View, clear, remove, or move queue items.")
+    @app_commands.choices(action=[
+        app_commands.Choice(name="View", value="view"),
+        app_commands.Choice(name="Clear", value="clear"),
+        app_commands.Choice(name="Remove", value="remove"),
+        app_commands.Choice(name="Move", value="move"),
+    ])
+    async def queue(
+        self,
+        interaction: discord.Interaction,
+        action: app_commands.Choice[str],
+        index: int | None = None,
+        target: int | None = None,
+    ) -> None:
+        await self._handle_queue_action(interaction, action, index, target)
 
     @app_commands.guild_only()
     @app_commands.command(name="nowplaying", description="Shows the currently playing song.")
@@ -820,7 +971,7 @@ class Music(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view)
 
     @app_commands.guild_only()
-    @app_commands.command(name="filters", description="Apply audio filters (bassboost, nightcore, vaporwave).")
+    @app_commands.command(name="filter", description="Apply an audio filter.")
     @app_commands.choices(filter=[
         app_commands.Choice(name="None", value="none"),
         app_commands.Choice(name="Bassboost", value="bassboost"),
@@ -829,7 +980,7 @@ class Music(commands.Cog):
         app_commands.Choice(name="Karaoke", value="karaoke"),
         app_commands.Choice(name="8D", value="8d"),
     ])
-    async def filters(self, interaction: discord.Interaction, filter: app_commands.Choice[str]) -> None:
+    async def filter(self, interaction: discord.Interaction, filter: app_commands.Choice[str]) -> None:
         player = manager.get_existing_player(interaction.guild_id)
         if not await _require_player_control(interaction, player):
             return
@@ -841,6 +992,21 @@ class Music(commands.Cog):
         await interaction.response.send_message(msg)
         sent = await interaction.original_response()
         _schedule_delete(sent)
+
+    @app_commands.guild_only()
+    @app_commands.command(name="save", description="Save the current queue.")
+    async def save(self, interaction: discord.Interaction, name: str) -> None:
+        await self._save_queue(interaction, name)
+
+    @app_commands.guild_only()
+    @app_commands.command(name="load", description="Load a saved queue.")
+    async def load(self, interaction: discord.Interaction, name: str) -> None:
+        await self._load_queue(interaction, name)
+
+    @app_commands.guild_only()
+    @app_commands.command(name="saved", description="List saved queues.")
+    async def saved(self, interaction: discord.Interaction) -> None:
+        await self._list_saved_queues(interaction)
 
     @app_commands.guild_only()
     @app_commands.command(name="lyrics", description="Show lyrics for the current song or a search query.")
@@ -880,179 +1046,3 @@ async def setup(bot: commands.Bot) -> None:
     bot.add_view(PersistentMusicReportView())
     cog = Music(bot)
     await bot.add_cog(cog)
-
-    music_group = app_commands.Group(name="music", description="Music controls")
-
-    async def track_autocomplete(
-        interaction: discord.Interaction,
-        current: str,
-    ) -> list[app_commands.Choice[str]]:
-        player = manager.get_existing_player(interaction.guild_id)
-        choices: list[app_commands.Choice[str]] = []
-        if player and player.current:
-            title = player.current.get("title", "")
-            url = player.current.get("webpage_url", "")
-            if title and current.lower() in title.lower():
-                choices.append(app_commands.Choice(name=f"Replay: {title}"[:100], value=url or title))
-        if current:
-            choices.append(app_commands.Choice(name=f"Search: {current}"[:100], value=current[:100]))
-        return choices[:25]
-
-    @music_group.command(name="play", description="Play a song from YouTube, Spotify, or SoundCloud.")
-    @app_commands.autocomplete(query=track_autocomplete)
-    async def music_play(interaction: discord.Interaction, query: str) -> None:
-        await cog.play.callback(cog, interaction, query)
-
-    @music_group.command(name="skip", description="Skip the current song.")
-    async def music_skip(interaction: discord.Interaction) -> None:
-        await cog.skip.callback(cog, interaction)
-
-    @music_group.command(name="stop", description="Stop music and clear the queue.")
-    async def music_stop(interaction: discord.Interaction) -> None:
-        await cog.stop.callback(cog, interaction)
-
-    @music_group.command(name="nowplaying", description="Show the current song.")
-    async def music_nowplaying(interaction: discord.Interaction) -> None:
-        await cog.nowplaying.callback(cog, interaction)
-
-    @music_group.command(name="queue", description="View, clear, remove, or move queue items.")
-    @app_commands.choices(action=[
-        app_commands.Choice(name="View", value="view"),
-        app_commands.Choice(name="Clear", value="clear"),
-        app_commands.Choice(name="Remove", value="remove"),
-        app_commands.Choice(name="Move", value="move"),
-    ])
-    async def music_queue(
-        interaction: discord.Interaction,
-        action: app_commands.Choice[str],
-        index: int | None = None,
-        target: int | None = None,
-    ) -> None:
-        player = manager.get_existing_player(interaction.guild_id)
-        if action.value == "view":
-            await cog.queue.callback(cog, interaction)
-            return
-
-        if not await _require_player_control(interaction, player, require_current=False):
-            return
-
-        if action.value == "clear":
-            player.queue.clear()
-            msg = await language.get_string(interaction.guild_id, "msg_queue_cleared")
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
-
-        if index is None or index < 1 or index > len(player.queue):
-            msg = await language.get_string(interaction.guild_id, "msg_queue_invalid_index")
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
-
-        if action.value == "remove":
-            removed = player.queue.remove_at(index - 1)
-            msg = await language.get_string(
-                interaction.guild_id,
-                "msg_queue_removed",
-                title=removed.get("title", "Unknown Title"),
-            )
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
-
-        if target is None or target < 1 or target > len(player.queue):
-            msg = await language.get_string(interaction.guild_id, "msg_queue_invalid_index")
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
-
-        player.queue.move(index - 1, target - 1)
-        msg = await language.get_string(interaction.guild_id, "msg_queue_moved", index=index, target=target)
-        await interaction.response.send_message(msg, ephemeral=True)
-
-    @music_group.command(name="filter", description="Apply an audio filter.")
-    @app_commands.choices(filter=[
-        app_commands.Choice(name="None", value="none"),
-        app_commands.Choice(name="Bassboost", value="bassboost"),
-        app_commands.Choice(name="Nightcore", value="nightcore"),
-        app_commands.Choice(name="Vaporwave", value="vaporwave"),
-        app_commands.Choice(name="Karaoke", value="karaoke"),
-        app_commands.Choice(name="8D", value="8d"),
-    ])
-    async def music_filter(interaction: discord.Interaction, filter: app_commands.Choice[str]) -> None:
-        await cog.filters.callback(cog, interaction, filter)
-
-    @music_group.command(name="save", description="Save the current queue.")
-    async def music_save(interaction: discord.Interaction, name: str) -> None:
-        player = manager.get_existing_player(interaction.guild_id)
-        if not await _require_player_control(interaction, player, require_current=False):
-            return
-
-        items = [
-            item.to_saved_record(position)
-            for position, item in enumerate(player.queue.to_saved_items(player.current), start=1)
-            if item.webpage_url
-        ]
-        if not items:
-            msg = await language.get_string(interaction.guild_id, "msg_queue_empty")
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
-
-        await interaction.client.db.save_music_queue(interaction.guild_id, name[:64], interaction.user.id, items)
-        msg = await language.get_string(interaction.guild_id, "msg_queue_saved", name=name[:64], count=len(items))
-        await interaction.response.send_message(msg, ephemeral=True)
-
-    @music_group.command(name="load", description="Load a saved queue.")
-    async def music_load(interaction: discord.Interaction, name: str) -> None:
-        if not interaction.user.voice:
-            msg = await language.get_string(interaction.guild_id, "msg_error_voice_required")
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
-
-        rows = await interaction.client.db.load_saved_music_queue(interaction.guild_id, name[:64])
-        if not rows:
-            msg = await language.get_string(interaction.guild_id, "msg_saved_queue_not_found")
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
-
-        await interaction.response.defer(ephemeral=True)
-        if not interaction.guild.voice_client:
-            try:
-                await manager.connect_to_voice(interaction.user.voice.channel)
-            except RuntimeError as exc:
-                return await interaction.followup.send(str(exc), ephemeral=True)
-        elif interaction.guild.voice_client.channel != interaction.user.voice.channel:
-            msg = await language.get_string(interaction.guild_id, "msg_error_same_voice_required")
-            await interaction.followup.send(msg, ephemeral=True)
-            return
-
-        session = await sessions.for_guild(interaction, cog=cog)
-        added = 0
-        for row in rows:
-            info = await _resolve_track(row["webpage_url"], requester_id=interaction.user.id)
-            if not info:
-                info = QueueItem(
-                    title=row["title"],
-                    webpage_url=row["webpage_url"],
-                    stream_url=None,
-                    requester_id=interaction.user.id,
-                    duration=row["duration"],
-                    source=row["source"],
-                ).to_track()
-            if await session.queue.add(info, requester=interaction.user.id):
-                added += 1
-            else:
-                break
-
-        msg = await language.get_string(interaction.guild_id, "msg_queue_loaded", name=name[:64], count=added)
-        await interaction.followup.send(msg, ephemeral=True)
-
-    @music_group.command(name="saved", description="List saved queues.")
-    async def music_saved(interaction: discord.Interaction) -> None:
-        queues = await interaction.client.db.list_saved_music_queues(interaction.guild_id)
-        if not queues:
-            msg = await language.get_string(interaction.guild_id, "msg_saved_queues_empty")
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
-
-        lines = [f"**{q['name']}** — {q['item_count']} tracks" for q in queues[:20]]
-        embed = discord.Embed(title="Saved Queues", description="\n".join(lines), color=bot.embed_color)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    bot.tree.add_command(music_group)

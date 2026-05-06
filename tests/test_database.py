@@ -71,6 +71,16 @@ class DatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(await self.db.delete_dashboard_user(admin["id"]))
         self.assertIsNotNone(await self.db.get_dashboard_user("admin"))
 
+    async def test_admin_user_upsert_updates_encrypted_password(self):
+        await self.db.upsert_admin_user("admin", "hash-v1", "encrypted-v1")
+        await self.db.upsert_admin_user("admin", "hash-v2", "encrypted-v2")
+
+        admin = await self.db.get_dashboard_user("admin")
+        listed = await self.db.list_dashboard_users()
+
+        self.assertEqual(admin["password_hash"], "hash-v2")
+        self.assertEqual(listed[0]["password_encrypted"], "encrypted-v2")
+
     async def test_saved_music_queue_lifecycle(self):
         items = [
             {

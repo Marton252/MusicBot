@@ -1,4 +1,7 @@
 import unittest
+from unittest.mock import patch
+
+from quart.testing.connections import WebsocketDisconnectError
 
 from services.web_dashboard import DashboardServer, RateLimiter, _encrypt_password
 
@@ -23,15 +26,35 @@ class _FakeDB:
             "is_admin": True,
             "can_restart": True,
             "can_view_logs": True,
+            "password_encrypted": "",
         }
+        self.created_users = []
+        self.updated_users = []
 
-    async def upsert_admin_user(self, username, password_hash):
+    async def upsert_admin_user(self, username, password_hash, password_encrypted=""):
         return None
 
     async def get_dashboard_user(self, username):
         if username == self.user["username"]:
             return dict(self.user)
         return None
+
+    async def create_dashboard_user(self, username, password_hash, password_encrypted, can_restart, can_view_logs):
+        user = {
+            "id": len(self.created_users) + 2,
+            "username": username,
+            "password_hash": password_hash,
+            "password_encrypted": password_encrypted,
+            "is_admin": False,
+            "can_restart": can_restart,
+            "can_view_logs": can_view_logs,
+        }
+        self.created_users.append(user)
+        return dict(user)
+
+    async def update_dashboard_user(self, user_id, **kwargs):
+        self.updated_users.append((user_id, kwargs))
+        return True
 
     async def list_dashboard_users(self):
         return [
@@ -48,10 +71,11 @@ class _FakeDB:
 
 
 class _FakeBot:
-    guilds = []
-    voice_clients = []
-    latency = 0
-    db = _FakeDB()
+    def __init__(self):
+        self.guilds = []
+        self.voice_clients = []
+        self.latency = 0
+        self.db = _FakeDB()
 
 
 class DashboardSecurityTests(unittest.IsolatedAsyncioTestCase):
@@ -64,6 +88,15 @@ class DashboardSecurityTests(unittest.IsolatedAsyncioTestCase):
         limiter.reset("client")
 
         self.assertFalse(limiter.is_rate_limited("client"))
+
+    async def test_rate_limiter_preserves_future_lockout_after_base_window(self):
+        limiter = RateLimiter(max_attempts=2, window_seconds=10)
+        limiter._attempts["client"] = [0.0, 0.1]
+        limiter._lockout_until["client"] = 20.0
+        limiter._lockout_count["client"] = 2
+
+        with patch("services.web_dashboard.time.monotonic", return_value=11.0):
+            self.assertTrue(limiter.is_rate_limited("client"))
 
     async def test_untrusted_forwarded_for_is_ignored(self):
         server = DashboardServer(_FakeBot(), 25825, "admin", "password")
@@ -115,6 +148,72 @@ class DashboardSecurityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload[0]["password_display"], "visible-secret")
         self.assertNotIn("password_encrypted", payload[0])
+
+    async def test_create_user_rejects_string_booleans(self):
+        bot = _FakeBot()
+        server = DashboardServer(bot, 25825, "admin", "password")
+        token = server.signer.create_token("admin", True, True, True)
+
+        client = server.app.test_client()
+        response = await client.post(
+            "/api/users",
+            headers={"Cookie": f"DASH_SESSION={token}", "X-CSRF-Protection": "1"},
+            json={
+                "username": "operator",
+                "password": "secret1",
+                "can_restart": "false",
+                "can_view_logs": True,
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(bot.db.created_users, [])
+
+    async def test_update_user_rejects_string_booleans_and_blank_username(self):
+        bot = _FakeBot()
+        server = DashboardServer(bot, 25825, "admin", "password")
+        token = server.signer.create_token("admin", True, True, True)
+
+        client = server.app.test_client()
+        bool_response = await client.put(
+            "/api/users/2",
+            headers={"Cookie": f"DASH_SESSION={token}", "X-CSRF-Protection": "1"},
+            json={"can_view_logs": "false"},
+        )
+        blank_response = await client.put(
+            "/api/users/2",
+            headers={"Cookie": f"DASH_SESSION={token}", "X-CSRF-Protection": "1"},
+            json={"username": "   "},
+        )
+
+        self.assertEqual(bool_response.status_code, 400)
+        self.assertEqual(blank_response.status_code, 400)
+        self.assertEqual(bot.db.updated_users, [])
+
+    async def test_websocket_uses_live_db_permissions_on_first_payload(self):
+        bot = _FakeBot()
+        bot.db.user["can_view_logs"] = False
+        server = DashboardServer(bot, 25825, "admin", "password")
+        server._process = _FakeProcess()
+        token = server.signer.create_token("admin", True, True, True)
+
+        client = server.app.test_client()
+        async with client.websocket("/ws", headers={"Cookie": f"DASH_SESSION={token}"}) as ws:
+            payload = await ws.receive_json()
+
+        self.assertFalse(payload["user"]["can_view_logs"])
+        self.assertNotIn("new_logs", payload)
+        self.assertNotIn("full_logs", payload)
+
+    async def test_websocket_rejects_deleted_user_before_first_payload(self):
+        bot = _FakeBot()
+        server = DashboardServer(bot, 25825, "admin", "password")
+        token = server.signer.create_token("ghost", True, True, True)
+
+        client = server.app.test_client()
+        with self.assertRaises(WebsocketDisconnectError):
+            async with client.websocket("/ws", headers={"Cookie": f"DASH_SESSION={token}"}) as ws:
+                await ws.receive_json()
 
 
 async def _list_users(user):

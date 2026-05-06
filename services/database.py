@@ -104,18 +104,24 @@ class Database:
 
     # ─── Dashboard Users ────────────────────────────────────────────────────────
 
-    async def upsert_admin_user(self, username: str, password_hash: str) -> None:
+    async def upsert_admin_user(
+        self,
+        username: str,
+        password_hash: str,
+        password_encrypted: str = '',
+    ) -> None:
         """Insert or update the admin user from .env credentials."""
         conn = await self._get_conn()
         await conn.execute('''
-            INSERT INTO dashboard_users (username, password_hash, is_admin, can_restart, can_view_logs)
-            VALUES (?, ?, 1, 1, 1)
+            INSERT INTO dashboard_users (username, password_hash, password_encrypted, is_admin, can_restart, can_view_logs)
+            VALUES (?, ?, ?, 1, 1, 1)
             ON CONFLICT(username) DO UPDATE SET
                 password_hash=excluded.password_hash,
+                password_encrypted=excluded.password_encrypted,
                 is_admin=1,
                 can_restart=1,
                 can_view_logs=1
-        ''', (username, password_hash))
+        ''', (username, password_hash, password_encrypted))
         await conn.commit()
         logger.info("Admin user '%s' upserted.", username)
 

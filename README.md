@@ -12,12 +12,12 @@ A modern Discord music bot with slash commands, interactive player controls, sav
 
 ## Features
 
-- **Slash-command music controls** with both classic commands and the newer `/music ...` command group.
+- **Slash-command music controls** with concise top-level commands.
 - **Interactive now-playing panel** with pause/resume, skip, stop, queue, shuffle, repeat, volume, filters, lyrics, and report controls.
 - **YouTube, SoundCloud, and Spotify support** using yt-dlp extraction plus Spotify metadata resolution.
 - **Audio filters**: `bassboost`, `nightcore`, `vaporwave`, `karaoke`, and `8d`.
 - **Lavalink audio backend by default** for a separate audio node, better buffering, filter support, and future crossfade work.
-- **Saved queues** with `/music save`, `/music load`, and `/music saved`.
+- **Saved queues** with `/save`, `/load`, and `/saved`.
 - **Dashboard** with live stats, logs, restart controls, and role-based user management.
 - **Localization** for English and Hungarian server settings.
 - **Production automation** through CI, CodeQL, Gitleaks, Dependabot, Docker build checks, and GHCR releases.
@@ -118,22 +118,22 @@ Healthy startup shows `Lavalink is ready to accept connections` in the Lavalink 
 
 ## Commands
 
-### Music Group
+### Music Commands
 
 | Command | What it does |
 | --- | --- |
-| `/music play <query>` | Plays a URL/search query or adds it to the queue. Includes autocomplete. |
-| `/music skip` | Skips the current track. |
-| `/music stop` | Stops playback, clears the queue, and disconnects. |
-| `/music nowplaying` | Shows or refreshes the player panel. |
-| `/music queue view` | Shows the queue. |
-| `/music queue clear` | Clears queued tracks. |
-| `/music queue remove <index>` | Removes one queue item. |
-| `/music queue move <index> <target>` | Moves one queue item. |
-| `/music filter <filter>` | Applies `none`, `bassboost`, `nightcore`, `vaporwave`, `karaoke`, or `8d`. |
-| `/music save <name>` | Saves the current queue for this server. |
-| `/music load <name>` | Loads a saved queue. |
-| `/music saved` | Lists saved queues. |
+| `/play <query>` | Plays a URL/search query or adds it to the queue. Includes autocomplete. |
+| `/skip` | Skips the current track. |
+| `/stop` | Stops playback, clears the queue, and disconnects. |
+| `/nowplaying` | Shows or refreshes the player panel. |
+| `/queue action:view` | Shows the queue. |
+| `/queue action:clear` | Clears queued tracks. |
+| `/queue action:remove index:2` | Removes one queue item. |
+| `/queue action:move index:2 target:1` | Moves one queue item. |
+| `/filter <filter>` | Applies `none`, `bassboost`, `nightcore`, `vaporwave`, `karaoke`, or `8d`. |
+| `/save <name>` | Saves the current queue for this server. |
+| `/load <name>` | Loads a saved queue. |
+| `/saved` | Lists saved queues. |
 
 ### General Commands
 
@@ -145,8 +145,6 @@ Healthy startup shows `Lavalink is ready to accept connections` in the Lavalink 
 | `/report` | Everyone | Opens a bug report modal. |
 | `/language <English/Magyar>` | Manage Server | Sets the server language. |
 | `/setup_report` | Administrator | Sends a persistent report button panel. |
-
-Legacy flat music commands such as `/play`, `/skip`, `/stop`, `/queue`, `/nowplaying`, and `/filters` are still available for compatibility.
 
 ## Dashboard
 

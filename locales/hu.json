@@ -87,7 +87,7 @@
     "help_title": "🎵 Zenei Bot Súgó",
     "help_desc": "**A Discord legfejlettebb zenei botja!** Az alábbi parancsokat és funkciókat használhatod.",
     "help_cmd_title": "📝 Parancsok",
-    "help_cmd_desc": "**/play <zene/url>** - Zene lejátszása (YouTube, Spotify, SoundCloud)\n**/nowplaying** - Információ az aktuális zenéről\n**/help** - Ez a súgó panel\n**/lyrics [keresés]** - Dalszöveg megjelenítése",
+    "help_cmd_desc": "**/play <zene/url>** - Zene lejátszása (YouTube, Spotify, SoundCloud)\n**/queue action:view** - Várólista megjelenítése\n**/filter <szűrő>** - Audio szűrők alkalmazása\n**/save <név>**, **/load <név>**, **/saved** - Mentett várólisták kezelése\n**/nowplaying** - Információ az aktuális zenéről\n**/lyrics [keresés]** - Dalszöveg megjelenítése",
     "help_btn_title": "🎛️ Gomb Vezérlés",
     "help_btn_desc": "⏸️/▶️ **Szünet/Folytatás** - A zene megállítása vagy folytatása\n⏭️ **Következő** - Ugrás a következő zenére\n⏹️ **Leállítás** - A zene teljes leállítása\n📋 **Várólista** - A lejátszási lista megjelenítése\n🔀 **Keverés** - A várólista összekeverése\n🔊 **Hangerő** - A hangerő beállítása\n🎛️ **Szűrő** - Audio szűrők alkalmazása (Bassboost, Nightcore...)",
     "help_plat_title": "🌐 Támogatott Platformok",

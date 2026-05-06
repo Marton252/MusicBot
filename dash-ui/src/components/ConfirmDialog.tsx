@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { AlertTriangle, X } from 'lucide-react';
 import type { Copy } from '../i18n';
 
@@ -14,6 +15,7 @@ interface ConfirmDialogProps {
 
 export function ConfirmDialog({ title, body, confirmLabel, tone = 'default', t, onCancel, onConfirm }: ConfirmDialogProps) {
   const confirmClass = tone === 'danger' ? 'bg-danger hover:bg-danger/90' : 'bg-accent hover:bg-accent-strong';
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -24,13 +26,24 @@ export function ConfirmDialog({ title, body, confirmLabel, tone = 'default', t, 
   }, [onCancel]);
 
   return (
-    <div
+    <motion.div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       role="dialog"
       aria-modal="true"
+      initial={reduceMotion ? false : { opacity: 0 }}
+      animate={reduceMotion ? undefined : { opacity: 1 }}
+      exit={reduceMotion ? undefined : { opacity: 0 }}
+      transition={{ duration: 0.16 }}
       onClick={onCancel}
     >
-      <div className="w-full max-w-sm rounded-lg border border-panel bg-surface p-5 shadow-panel" onClick={(e) => e.stopPropagation()}>
+      <motion.div
+        className="w-full max-w-sm rounded-lg border border-panel bg-surface p-5 shadow-panel"
+        initial={reduceMotion ? false : { opacity: 0, scale: 0.98, y: 10 }}
+        animate={reduceMotion ? undefined : { opacity: 1, scale: 1, y: 0 }}
+        exit={reduceMotion ? undefined : { opacity: 0, scale: 0.98, y: 10 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mb-4 flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-md border border-danger/30 bg-danger/10">
@@ -53,7 +66,7 @@ export function ConfirmDialog({ title, body, confirmLabel, tone = 'default', t, 
             {confirmLabel}
           </button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

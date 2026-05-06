@@ -87,7 +87,7 @@
     "help_title": "🎵 Music Bot Help",
     "help_desc": "**Discord's most advanced music bot!** You can use the following commands and features.",
     "help_cmd_title": "📝 Commands",
-    "help_cmd_desc": "**/play <song/url>** - Play music (YouTube, Spotify, SoundCloud)\n**/nowplaying** - Information about the current song\n**/help** - Display this help menu\n**/lyrics [query]** - Show lyrics for a song",
+    "help_cmd_desc": "**/play <song/url>** - Play music (YouTube, Spotify, SoundCloud)\n**/queue action:view** - Show the queue\n**/filter <filter>** - Apply audio filters\n**/save <name>**, **/load <name>**, **/saved** - Manage saved queues\n**/nowplaying** - Information about the current song\n**/lyrics [query]** - Show lyrics for a song",
     "help_btn_title": "🎛️ Button Controls",
     "help_btn_desc": "⏸️/▶️ **Pause/Resume** - Pause or resume the music\n⏭️ **Skip** - Skip to the next song\n⏹️ **Stop** - Stop the music completely\n📋 **Queue** - Display the playback queue\n🔀 **Shuffle** - Shuffle the queue\n🔊 **Volume** - Adjust the volume\n🎛️ **Filter** - Apply audio filters (Bassboost, Nightcore...)",
     "help_plat_title": "🌐 Supported Platforms",

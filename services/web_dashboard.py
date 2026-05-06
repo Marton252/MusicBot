@@ -67,6 +67,7 @@ class RateLimiter:
         expired = [
             k for k, v in self._attempts.items()
             if all(now - t >= self.base_window for t in v)
+            and now >= self._lockout_until.get(k, 0)
         ]
         for k in expired:
             del self._attempts[k]
@@ -172,6 +173,16 @@ def _validate_password(password: str) -> str | None:
     return None
 
 
+def _validate_boolean_field(data: dict, field: str, default: bool | None = None) -> tuple[bool | None, str | None]:
+    """Return a strict JSON boolean value or an error for malformed permission fields."""
+    if field not in data:
+        return default, None
+    value = data[field]
+    if not isinstance(value, bool):
+        return None, f'{field} must be a boolean.'
+    return value, None
+
+
 def _hash_password(password: str) -> str:
     """Hash a password with bcrypt (cost factor 12)."""
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(rounds=12)).decode('utf-8')
@@ -261,7 +272,8 @@ class DashboardServer:
     async def _init_admin(self) -> None:
         """Hash admin password and upsert into DB at startup."""
         hashed = _hash_password(self.admin_password)
-        await self.bot.db.upsert_admin_user(self.admin_user, hashed)
+        encrypted = _encrypt_password(self.fernet, self.admin_password)
+        await self.bot.db.upsert_admin_user(self.admin_user, hashed, encrypted)
 
     def _get_stats(self) -> dict:
         """Gather system stats — cached for 1 second to avoid redundant syscalls."""
@@ -551,8 +563,13 @@ class DashboardServer:
 
             username = (data or {}).get('username', '').strip()
             password = (data or {}).get('password', '')
-            can_restart = bool((data or {}).get('can_restart', False))
-            can_view_logs = bool((data or {}).get('can_view_logs', True))
+            data = data or {}
+            can_restart, err = _validate_boolean_field(data, 'can_restart', False)
+            if err:
+                return jsonify({'error': err}), 400
+            can_view_logs, err = _validate_boolean_field(data, 'can_view_logs', True)
+            if err:
+                return jsonify({'error': err}), 400
 
             # Validate
             err = _validate_username(username)
@@ -585,8 +602,11 @@ class DashboardServer:
             except Exception:
                 return jsonify({'error': 'Invalid request body'}), 400
 
+            data = data or {}
             kwargs: dict = {}
-            if 'username' in (data or {}) and data['username']:
+            if 'username' in data:
+                if not isinstance(data['username'], str):
+                    return jsonify({'error': 'Username must be a string.'}), 400
                 new_username = data['username'].strip()
                 err = _validate_username(new_username)
                 if err:
@@ -596,11 +616,20 @@ class DashboardServer:
                 if existing and existing['id'] != user_id:
                     return jsonify({'error': 'Username already exists.'}), 409
                 kwargs['username'] = new_username
-            if 'can_restart' in (data or {}):
-                kwargs['can_restart'] = bool(data['can_restart'])
-            if 'can_view_logs' in (data or {}):
-                kwargs['can_view_logs'] = bool(data['can_view_logs'])
-            if 'password' in (data or {}) and data['password']:
+
+            can_restart, err = _validate_boolean_field(data, 'can_restart')
+            if err:
+                return jsonify({'error': err}), 400
+            if can_restart is not None:
+                kwargs['can_restart'] = can_restart
+
+            can_view_logs, err = _validate_boolean_field(data, 'can_view_logs')
+            if err:
+                return jsonify({'error': err}), 400
+            if can_view_logs is not None:
+                kwargs['can_view_logs'] = can_view_logs
+
+            if 'password' in data and data['password']:
                 err = _validate_password(data['password'])
                 if err:
                     return jsonify({'error': err}), 400
@@ -634,6 +663,17 @@ class DashboardServer:
             if not user:
                 await websocket.close(1008, 'Unauthorized')
                 return
+
+            db_user = await self.bot.db.get_dashboard_user(user['username'])
+            if not db_user:
+                await websocket.close(1008, 'User deleted')
+                return
+            user = {
+                'username': db_user['username'],
+                'is_admin': db_user['is_admin'],
+                'can_restart': db_user['can_restart'],
+                'can_view_logs': db_user['can_view_logs'],
+            }
 
             dash_logger = logging.getLogger('MusicBot.Dashboard')
             can_view_logs = user.get('can_view_logs', False)

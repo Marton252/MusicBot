@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Eye, EyeOff, Pencil, Plus, Shield, ShieldCheck, Trash2, X } from 'lucide-react';
 import type { Copy } from '../i18n';
 import type { DashboardUser } from '../types';
@@ -73,6 +74,7 @@ function UserFormModal({
   }));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const reduceMotion = useReducedMotion();
 
   const passwordLabel = isEdit ? t.newPasswordOptional : t.createPassword;
 
@@ -94,8 +96,25 @@ function UserFormModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" onClick={onClose}>
-      <form className="w-full max-w-md rounded-lg border border-panel bg-surface p-5 shadow-panel" onSubmit={submit} onClick={(e) => e.stopPropagation()}>
+    <motion.div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      role="dialog"
+      aria-modal="true"
+      initial={reduceMotion ? false : { opacity: 0 }}
+      animate={reduceMotion ? undefined : { opacity: 1 }}
+      exit={reduceMotion ? undefined : { opacity: 0 }}
+      transition={{ duration: 0.16 }}
+      onClick={onClose}
+    >
+      <motion.form
+        className="w-full max-w-md rounded-lg border border-panel bg-surface p-5 shadow-panel"
+        onSubmit={submit}
+        onClick={(e) => e.stopPropagation()}
+        initial={reduceMotion ? false : { opacity: 0, scale: 0.98, y: 10 }}
+        animate={reduceMotion ? undefined : { opacity: 1, scale: 1, y: 0 }}
+        exit={reduceMotion ? undefined : { opacity: 0, scale: 0.98, y: 10 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+      >
         <div className="mb-5 flex items-center justify-between gap-4">
           <h2 className="text-lg font-semibold text-white">{title}</h2>
           <button type="button" onClick={onClose} className="rounded-md p-1 text-muted hover:bg-panel hover:text-white" aria-label={t.cancel}>
@@ -148,12 +167,13 @@ function UserFormModal({
             {isEdit ? t.save : t.create}
           </button>
         </div>
-      </form>
-    </div>
+      </motion.form>
+    </motion.div>
   );
 }
 
 export function UserManagementPanel({ t }: { t: Copy }) {
+  const reduceMotion = useReducedMotion();
   const [users, setUsers] = useState<DashboardUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -204,7 +224,12 @@ export function UserManagementPanel({ t }: { t: Copy }) {
   };
 
   return (
-    <section className="rounded-lg border border-panel bg-surface shadow-panel">
+    <motion.section
+      className="rounded-lg border border-panel bg-surface shadow-panel"
+      initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+    >
       <div className="flex items-center justify-between gap-3 border-b border-panel px-4 py-3">
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4 text-accent" />
@@ -240,7 +265,13 @@ export function UserManagementPanel({ t }: { t: Copy }) {
               </thead>
               <tbody>
                 {sortedUsers.map((user) => (
-                  <tr key={user.id} className="border-b border-panel last:border-b-0">
+                  <motion.tr
+                    key={user.id}
+                    className="border-b border-panel last:border-b-0"
+                    initial={reduceMotion ? false : { opacity: 0 }}
+                    animate={reduceMotion ? undefined : { opacity: 1 }}
+                    transition={{ duration: 0.16 }}
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 text-white">
                         {user.is_admin ? <ShieldCheck className="h-4 w-4 text-accent" /> : <span className="h-4 w-4 rounded-full bg-panel" />}
@@ -269,7 +300,7 @@ export function UserManagementPanel({ t }: { t: Copy }) {
                         </div>
                       )}
                     </td>
-                  </tr>
+                  </motion.tr>
                 ))}
               </tbody>
             </table>
@@ -277,7 +308,13 @@ export function UserManagementPanel({ t }: { t: Copy }) {
 
           <div className="grid gap-3 p-3 md:hidden">
             {sortedUsers.map((user) => (
-              <div key={user.id} className="rounded-lg border border-panel bg-app p-3">
+              <motion.div
+                key={user.id}
+                className="rounded-lg border border-panel bg-app p-3"
+                initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+                transition={{ duration: 0.16 }}
+              >
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2 text-white">
                     {user.is_admin ? <ShieldCheck className="h-4 w-4 text-accent" /> : <span className="h-4 w-4 rounded-full bg-panel" />}
@@ -309,78 +346,84 @@ export function UserManagementPanel({ t }: { t: Copy }) {
                     <PasswordCell user={user} t={t} />
                   </div>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
         </>
       )}
 
-      {showAddModal && (
-        <UserFormModal
-          title={t.addUser}
-          t={t}
-          onClose={() => setShowAddModal(false)}
-          onSave={async (data) => {
-            const res = await fetch('/api/users', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-CSRF-Protection': '1' },
-              body: JSON.stringify(data),
-            });
-            if (res.ok) {
-              await fetchUsers();
-              setShowAddModal(false);
-              return null;
-            }
-            const err = await res.json();
-            return err.error || 'Failed to create user.';
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {showAddModal && (
+          <UserFormModal
+            title={t.addUser}
+            t={t}
+            onClose={() => setShowAddModal(false)}
+            onSave={async (data) => {
+              const res = await fetch('/api/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Protection': '1' },
+                body: JSON.stringify(data),
+              });
+              if (res.ok) {
+                await fetchUsers();
+                setShowAddModal(false);
+                return null;
+              }
+              const err = await res.json();
+              return err.error || 'Failed to create user.';
+            }}
+          />
+        )}
+      </AnimatePresence>
 
-      {editUser && (
-        <UserFormModal
-          title={`${t.editUser}: ${editUser.username}`}
-          initial={editUser}
-          isEdit
-          t={t}
-          onClose={() => setEditUser(null)}
-          onSave={async (data) => {
-            const payload: Partial<UserFormData> = {};
-            if (data.username !== editUser.username) payload.username = data.username;
-            if (data.password) payload.password = data.password;
-            if (data.can_restart !== editUser.can_restart) payload.can_restart = data.can_restart;
-            if (data.can_view_logs !== editUser.can_view_logs) payload.can_view_logs = data.can_view_logs;
-            if (Object.keys(payload).length === 0) {
-              setEditUser(null);
-              return null;
-            }
-            const res = await fetch(`/api/users/${editUser.id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json', 'X-CSRF-Protection': '1' },
-              body: JSON.stringify(payload),
-            });
-            if (res.ok) {
-              await fetchUsers();
-              setEditUser(null);
-              return null;
-            }
-            const err = await res.json();
-            return err.error || 'Failed to update user.';
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {editUser && (
+          <UserFormModal
+            title={`${t.editUser}: ${editUser.username}`}
+            initial={editUser}
+            isEdit
+            t={t}
+            onClose={() => setEditUser(null)}
+            onSave={async (data) => {
+              const payload: Partial<UserFormData> = {};
+              if (data.username !== editUser.username) payload.username = data.username;
+              if (data.password) payload.password = data.password;
+              if (data.can_restart !== editUser.can_restart) payload.can_restart = data.can_restart;
+              if (data.can_view_logs !== editUser.can_view_logs) payload.can_view_logs = data.can_view_logs;
+              if (Object.keys(payload).length === 0) {
+                setEditUser(null);
+                return null;
+              }
+              const res = await fetch(`/api/users/${editUser.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Protection': '1' },
+                body: JSON.stringify(payload),
+              });
+              if (res.ok) {
+                await fetchUsers();
+                setEditUser(null);
+                return null;
+              }
+              const err = await res.json();
+              return err.error || 'Failed to update user.';
+            }}
+          />
+        )}
+      </AnimatePresence>
 
-      {deleteTarget && (
-        <ConfirmDialog
-          title={t.confirmDelete}
-          body={t.confirmDeleteBody}
-          confirmLabel={t.delete}
-          tone="danger"
-          t={t}
-          onCancel={() => setDeleteTarget(null)}
-          onConfirm={deleteUser}
-        />
-      )}
-    </section>
+      <AnimatePresence>
+        {deleteTarget && (
+          <ConfirmDialog
+            title={t.confirmDelete}
+            body={t.confirmDeleteBody}
+            confirmLabel={t.delete}
+            tone="danger"
+            t={t}
+            onCancel={() => setDeleteTarget(null)}
+            onConfirm={deleteUser}
+          />
+        )}
+      </AnimatePresence>
+    </motion.section>
   );
 }
