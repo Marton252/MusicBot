@@ -15,7 +15,7 @@ lavalink:
   plugins:
     # Lavalink v4 deprecates the built-in YouTube source.
     # Keep this plugin pinned and update intentionally.
-    - dependency: "dev.lavalink.youtube:youtube-plugin:1.17.0"
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.1"
       snapshot: false
 
   server:

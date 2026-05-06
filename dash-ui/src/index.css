@@ -2,17 +2,29 @@
 
 @theme {
   --font-sans: 'Outfit', system-ui, sans-serif;
-  --color-brand-500: #FF6B6B;
+  --color-app: #0b0d12;
+  --color-surface: #141821;
+  --color-panel: #252b36;
+  --color-muted: #9aa6b8;
+  --color-accent: #ff626d;
+  --color-accent-strong: #f24d5d;
+  --color-danger: #e5484d;
+  --color-ok: #14c784;
+  --shadow-panel: 0 18px 60px rgba(0, 0, 0, 0.22);
 }
 
 @layer base {
+  html {
+    background: var(--color-app);
+  }
+
   body {
-    background-color: #0f0f13;
-    color: #e2e8f0;
+    min-width: 320px;
+    background: var(--color-app);
+    color: #e7edf6;
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Pointer cursor on all interactive elements */
   button,
   [role="button"],
   a,
@@ -23,13 +35,17 @@
   summary {
     cursor: pointer;
   }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
 }
 
-/* Hide scrollbar but keep scroll functionality */
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }

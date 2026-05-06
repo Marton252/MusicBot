@@ -64,7 +64,18 @@ def mark_connected() -> None:
     _connected = True
 
 
-async def connect_lavalink(bot: Any) -> None:
+async def _wait_for_lavalink_socket() -> None:
+    timeout = min(2.0, max(0.1, float(LAVALINK_CONNECT_RETRY_DELAY)))
+    _, writer = await asyncio.wait_for(
+        asyncio.open_connection(LAVALINK_HOST, LAVALINK_PORT),
+        timeout=timeout,
+    )
+    writer.close()
+    with contextlib.suppress(Exception):
+        await writer.wait_closed()
+
+
+async def connect_lavalink(bot: Any, *, quiet: bool = False) -> None:
     """Connect the optional Lavalink node during bot startup."""
     global _connected
     if not lavalink_requested():
@@ -86,6 +97,7 @@ async def connect_lavalink(bot: Any) -> None:
     last_exc: Exception | None = None
     for attempt in range(1, LAVALINK_CONNECT_RETRIES + 1):
         try:
+            await _wait_for_lavalink_socket()
             node = wavelink.Node(uri=uri, password=LAVALINK_PASSWORD, identifier="main")
             await wavelink.Pool.connect(nodes=[node], client=bot, cache_capacity=100)
             _connected = True
@@ -97,7 +109,7 @@ async def connect_lavalink(bot: Any) -> None:
             with contextlib.suppress(Exception):
                 await wavelink.Pool.close()
             if attempt < LAVALINK_CONNECT_RETRIES:
-                logger.warning(
+                logger.info(
                     "Failed to connect to Lavalink at %s (attempt %d/%d): %s. Retrying in %.1fs.",
                     uri,
                     attempt,
@@ -106,6 +118,15 @@ async def connect_lavalink(bot: Any) -> None:
                     LAVALINK_CONNECT_RETRY_DELAY,
                 )
                 await asyncio.sleep(LAVALINK_CONNECT_RETRY_DELAY)
+
+    if quiet:
+        logger.info(
+            "Lavalink is not ready yet at %s after %d attempts: %s",
+            uri,
+            LAVALINK_CONNECT_RETRIES,
+            last_exc,
+        )
+        return
 
     if MUSIC_BACKEND == "lavalink":
         logger.error(
@@ -127,7 +148,7 @@ async def reconnect_until_ready(bot: Any) -> None:
     """Keep trying in the background after startup if the node was not ready yet."""
     while lavalink_requested() and not _connected and not bot.is_closed():
         await asyncio.sleep(LAVALINK_CONNECT_RETRY_DELAY)
-        await connect_lavalink(bot)
+        await connect_lavalink(bot, quiet=True)
 
 
 async def close_lavalink() -> None:

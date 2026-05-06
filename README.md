@@ -95,7 +95,26 @@ cp docker-compose.example.yml docker-compose.yml
 docker compose up -d
 ```
 
-The compose file starts both the bot and the internal Lavalink node, uses `ghcr.io/marton252/musicbot:latest`, persists SQLite data in a Docker volume, and exposes `${DASHBOARD_PORT:-25825}`.
+The compose file starts both the bot and the internal Lavalink node, uses `ghcr.io/marton252/musicbot:latest`, persists SQLite data in a Docker volume, and exposes `${DASHBOARD_PORT:-25825}` for the dashboard.
+
+Docker networking is split intentionally:
+
+- `bot` joins `dashboard_net` and `audio_net`.
+- `lavalink` joins only `audio_net`.
+- Lavalink uses `expose`, not `ports`, so port `2333` is reachable by the bot but is not published to the host or internet.
+- Do not set `internal: true` on the Lavalink/audio network. Lavalink needs outbound internet for YouTube plugin checks/downloads and media source resolution.
+
+For a reverse proxy, attach only the `bot` service/dashboard network to your proxy. Keep Lavalink off the proxy network.
+
+Quick checks after startup:
+
+```bash
+docker compose exec bot getent hosts lavalink
+docker compose logs -f --tail=100 lavalink
+docker compose logs -f --tail=100 bot
+```
+
+Healthy startup shows `Lavalink is ready to accept connections` in the Lavalink logs and `Connected to Lavalink node` in the bot logs.
 
 ## Commands
 

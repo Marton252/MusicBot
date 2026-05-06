@@ -1,3 +1,4 @@
+import logging
 import unittest
 from collections import deque
 from types import SimpleNamespace
@@ -151,6 +152,7 @@ class LavalinkAdapterAsyncTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(lavalink, "_import_wavelink", return_value=fake_wavelink),
+            patch.object(lavalink, "_wait_for_lavalink_socket", new=AsyncMock()),
             patch.object(lavalink, "LAVALINK_CONNECT_RETRIES", 2),
             patch.object(lavalink, "LAVALINK_CONNECT_RETRY_DELAY", 0.01),
         ):
@@ -158,6 +160,74 @@ class LavalinkAdapterAsyncTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(lavalink._connected)
         self.assertEqual(fake_wavelink.Pool.connect.await_count, 2)
+
+    async def test_connect_lavalink_startup_retry_logs_info_not_warning(self):
+        lavalink.MUSIC_BACKEND = "lavalink"
+        lavalink._connected = False
+        node = Mock()
+        fake_wavelink = SimpleNamespace(
+            Node=Mock(return_value=node),
+            Pool=SimpleNamespace(connect=AsyncMock(side_effect=[RuntimeError("booting"), {"main": node}])),
+        )
+
+        with (
+            patch.object(lavalink, "_import_wavelink", return_value=fake_wavelink),
+            patch.object(lavalink, "_wait_for_lavalink_socket", new=AsyncMock()),
+            patch.object(lavalink, "LAVALINK_CONNECT_RETRIES", 2),
+            patch.object(lavalink, "LAVALINK_CONNECT_RETRY_DELAY", 0.01),
+            self.assertLogs("MusicBot.Lavalink", level="INFO") as logs,
+        ):
+            await lavalink.connect_lavalink(SimpleNamespace())
+
+        self.assertTrue(lavalink._connected)
+        self.assertTrue(any("Retrying" in message for message in logs.output))
+        self.assertFalse(any(record.levelno >= logging.WARNING for record in logs.records))
+
+    async def test_quiet_lavalink_reconnect_wait_logs_info_not_warning(self):
+        lavalink.MUSIC_BACKEND = "lavalink"
+        lavalink._connected = False
+        fake_wavelink = SimpleNamespace(
+            Node=Mock(),
+            Pool=SimpleNamespace(connect=AsyncMock(side_effect=RuntimeError("booting"))),
+        )
+
+        with (
+            patch.object(lavalink, "_import_wavelink", return_value=fake_wavelink),
+            patch.object(lavalink, "_wait_for_lavalink_socket", new=AsyncMock()),
+            patch.object(lavalink, "LAVALINK_CONNECT_RETRIES", 1),
+            self.assertLogs("MusicBot.Lavalink", level="INFO") as logs,
+        ):
+            await lavalink.connect_lavalink(SimpleNamespace(), quiet=True)
+
+        self.assertFalse(lavalink._connected)
+        self.assertTrue(any("not ready yet" in message for message in logs.output))
+        self.assertFalse(any(record.levelno >= logging.WARNING for record in logs.records))
+
+    async def test_lavalink_socket_wait_prevents_wavelink_warning_before_node_ready(self):
+        lavalink.MUSIC_BACKEND = "lavalink"
+        lavalink._connected = False
+        fake_wavelink = SimpleNamespace(
+            Node=Mock(),
+            Pool=SimpleNamespace(connect=AsyncMock()),
+        )
+
+        with (
+            patch.object(lavalink, "_import_wavelink", return_value=fake_wavelink),
+            patch.object(
+                lavalink,
+                "_wait_for_lavalink_socket",
+                new=AsyncMock(side_effect=OSError("connection refused")),
+            ),
+            patch.object(lavalink, "LAVALINK_CONNECT_RETRIES", 2),
+            patch.object(lavalink, "LAVALINK_CONNECT_RETRY_DELAY", 0.01),
+            self.assertLogs("MusicBot.Lavalink", level="INFO") as logs,
+        ):
+            await lavalink.connect_lavalink(SimpleNamespace(), quiet=True)
+
+        self.assertFalse(lavalink._connected)
+        self.assertEqual(fake_wavelink.Pool.connect.await_count, 0)
+        self.assertTrue(any("Retrying" in message for message in logs.output))
+        self.assertFalse(any(record.levelno >= logging.WARNING for record in logs.records))
 
 
 if __name__ == "__main__":

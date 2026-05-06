@@ -15,6 +15,9 @@ import psutil
 from cryptography.fernet import Fernet, InvalidToken
 from quart import Quart, request, jsonify, redirect, make_response, websocket, send_from_directory
 
+from config import LAVALINK_HOST, LAVALINK_PORT, LAVALINK_SECURE, MUSIC_BACKEND
+from services.music import lavalink as lavalink_state
+
 
 # ─── Log Capture Handler ────────────────────────────────────────────────────────
 
@@ -246,7 +249,7 @@ class DashboardServer:
         self._process.cpu_percent(interval=None)
 
         # Server-side stats history — survives page refresh / logout
-        self._stats_history: deque[tuple[float, float, int]] = deque(maxlen=86400)
+        self._stats_history: deque[tuple[float, float, float, int]] = deque(maxlen=86400)
         self._last_history_sample_time: float = 0.0
 
         # Stats cache (avoid redundant syscalls when multiple WS clients connected)
@@ -269,8 +272,10 @@ class DashboardServer:
         ram_mb = self._process.memory_info().rss / 1024 / 1024
         users = sum(g.member_count for g in self.bot.guilds if g.member_count)
         uptime = str(datetime.datetime.now(datetime.UTC) - self.start_time).split('.')[0]
+        lavalink_scheme = 'https' if LAVALINK_SECURE else 'http'
 
         self._stats_cache = {
+            'sampled_at': time.time(),
             'ping': round(self.bot.latency * 1000),
             'guilds': len(self.bot.guilds),
             'users': users,
@@ -278,9 +283,52 @@ class DashboardServer:
             'ram_usage_mb': round(ram_mb, 1),
             'cpu_usage': self._process.cpu_percent(interval=None),
             'uptime': uptime,
+            'audio': {
+                'configured_backend': MUSIC_BACKEND,
+                'effective_backend': lavalink_state.effective_backend(),
+                'lavalink_requested': lavalink_state.lavalink_requested(),
+                'lavalink_connected': lavalink_state.is_lavalink_active(),
+                'lavalink_uri': f'{lavalink_scheme}://{LAVALINK_HOST}:{LAVALINK_PORT}',
+            },
         }
         self._stats_cache_time = now
         return self._stats_cache
+
+    def _record_stats_sample(self, stats: dict, *, now: float | None = None) -> None:
+        """Store one timestamped dashboard sample per second."""
+        now = time.monotonic() if now is None else now
+        if now - self._last_history_sample_time < 1.0:
+            return
+        self._stats_history.append((
+            float(stats.get('sampled_at') or time.time()),
+            float(stats['cpu_usage']),
+            float(stats['ram_usage_mb']),
+            int(stats['ping']),
+        ))
+        self._last_history_sample_time = now
+
+    @staticmethod
+    def _downsample_stats_history(
+        history: list[tuple[float, float, float, int]],
+        max_points: int = 1000,
+    ) -> list[tuple[float, float, float, int]]:
+        """Reduce history with bucket averages while preserving timestamps."""
+        if len(history) <= max_points:
+            return history
+
+        step = len(history) / max_points
+        sampled: list[tuple[float, float, float, int]] = []
+        for i in range(max_points):
+            start = int(i * step)
+            end = len(history) if i == max_points - 1 else max(start + 1, int((i + 1) * step))
+            bucket = history[start:end]
+            sampled.append((
+                bucket[-1][0],
+                round(sum(point[1] for point in bucket) / len(bucket), 1),
+                round(sum(point[2] for point in bucket) / len(bucket), 1),
+                round(sum(point[3] for point in bucket) / len(bucket)),
+            ))
+        return sampled
 
     def _remote_addr_is_trusted_proxy(self) -> bool:
         if not self.trusted_proxy_networks:
@@ -613,15 +661,9 @@ class DashboardServer:
 
                     stats = self._get_stats()
 
-                    # Accumulate server-side history once per second, even with multiple WS clients.
-                    now = time.monotonic()
-                    if now - self._last_history_sample_time >= 1.0:
-                        self._stats_history.append((
-                            stats['cpu_usage'],
-                            stats['ram_usage_mb'],
-                            stats['ping'],
-                        ))
-                        self._last_history_sample_time = now
+                    # Accumulate timestamped server-side history once per second,
+                    # even with multiple WS clients.
+                    self._record_stats_sample(stats)
 
                     payload: dict = {
                         'type': 'update',
@@ -631,17 +673,12 @@ class DashboardServer:
 
                     # On first tick, send downsampled history so client can resume graphs
                     if first_tick:
-                        history = list(self._stats_history)
-                        max_pts = 1000
-                        if len(history) > max_pts:
-                            step = len(history) / max_pts
-                            sampled = [history[int(i * step)] for i in range(max_pts)]
-                        else:
-                            sampled = history
+                        sampled = self._downsample_stats_history(list(self._stats_history))
                         payload['stats_history'] = {
-                            'cpu':  [h[0] for h in sampled],
-                            'ram':  [h[1] for h in sampled],
-                            'ping': [h[2] for h in sampled],
+                            'points': [
+                                {'t': h[0], 'cpu': h[1], 'ram': h[2], 'ping': h[3]}
+                                for h in sampled
+                            ],
                         }
                         first_tick = False
 

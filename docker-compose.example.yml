@@ -10,7 +10,7 @@
 #
 # Services:
 #   bot       Discord bot + Quart dashboard
-#   lavalink Lavalink v4 audio node, internal to the compose network
+#   lavalink Lavalink v4 audio node, reachable only by the bot network
 #
 # Dashboard:
 #   https://localhost:${DASHBOARD_PORT:-25825}
@@ -48,11 +48,17 @@ services:
       # Optional: mount a cookies.txt file for YouTube authentication.
       # - ./cookies.txt:/app/cookies.txt:ro
 
+    networks:
+      - dashboard_net
+      - audio_net
+
   # Default audio backend. The 2333 port is intentionally not published.
   # If you set MUSIC_BACKEND=ffmpeg, this service can be removed.
   lavalink:
     image: ghcr.io/lavalink-devs/lavalink:4-alpine
     container_name: musicbot-lavalink
+    # Keeps plugin downloads writable on named volumes across Docker hosts.
+    user: "0:0"
     restart: unless-stopped
     env_file:
       - .env
@@ -64,6 +70,18 @@ services:
       - ./lavalink/application.yml.example:/opt/Lavalink/application.yml:ro
       - lavalink-plugins:/opt/Lavalink/plugins
 
+    networks:
+      - audio_net
+
 volumes:
   bot-data:
   lavalink-plugins:
+
+networks:
+  # Attach a reverse proxy here if you use one; only the bot is on this network.
+  dashboard_net:
+
+  # Do not mark this network as internal. Lavalink needs outbound internet for
+  # plugin checks/downloads and media source resolution, but its port is not
+  # published to the host.
+  audio_net:
