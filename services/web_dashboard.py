@@ -235,7 +235,7 @@ class DashboardServer:
                 self.trusted_proxy_networks.append(ipaddress.ip_network(raw_proxy, strict=False))
             except ValueError:
                 logging.getLogger('MusicBot.Dashboard').warning(
-                    "Ignoring invalid trusted proxy entry: %s", raw_proxy,
+                    "Ignoring invalid trusted proxy entry (redacted, length=%d).", len(raw_proxy),
                 )
         self._cookie_secure = True
 
