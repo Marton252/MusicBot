@@ -29,15 +29,15 @@ export function TopBar({ user, stats, language, t, onLanguageChange, onRestart, 
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-1 rounded-md border border-panel bg-surface p-1 text-xs text-muted">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="inline-flex shrink-0 items-center gap-1 rounded-md border border-panel bg-surface p-1 text-xs text-muted">
             <Languages className="h-4 w-4" />
             {(['en', 'hu'] as const).map((lang) => (
               <button
                 key={lang}
                 type="button"
                 onClick={() => onLanguageChange(lang)}
-                className={`rounded px-2 py-1 font-semibold uppercase transition ${
+                className={`rounded px-2 py-1 font-semibold uppercase transition focus:outline-none focus:ring-2 focus:ring-accent/60 ${
                   language === lang ? 'bg-accent text-white' : 'hover:bg-panel hover:text-white'
                 }`}
               >
@@ -50,21 +50,21 @@ export function TopBar({ user, stats, language, t, onLanguageChange, onRestart, 
             <button
               type="button"
               onClick={onRestart}
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-panel bg-surface px-3 text-sm font-medium text-white hover:bg-panel"
+              className="inline-flex h-9 max-w-full items-center gap-2 rounded-md border border-panel bg-surface px-3 text-sm font-medium text-white hover:bg-panel focus:outline-none focus:ring-2 focus:ring-accent/60"
             >
-              <RefreshCw className="h-4 w-4" />
-              <span className="hidden sm:inline">{t.restartBot}</span>
-              <span className="sm:hidden">{t.restartShort}</span>
+              <RefreshCw className="h-4 w-4 shrink-0" />
+              <span className="hidden truncate sm:inline">{t.restartBot}</span>
+              <span className="truncate sm:hidden">{t.restartShort}</span>
             </button>
           )}
 
           <button
             type="button"
             onClick={onLogout}
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-danger/30 bg-danger/10 px-3 text-sm font-medium text-red-100 hover:bg-danger/20"
+            className="inline-flex h-9 max-w-full items-center gap-2 rounded-md border border-danger/30 bg-danger/10 px-3 text-sm font-medium text-red-100 hover:bg-danger/20 focus:outline-none focus:ring-2 focus:ring-danger/60"
           >
-            <LogOut className="h-4 w-4" />
-            {t.logout}
+            <LogOut className="h-4 w-4 shrink-0" />
+            <span className="truncate">{t.logout}</span>
           </button>
         </div>
       </div>

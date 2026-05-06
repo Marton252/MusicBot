@@ -54,15 +54,15 @@ export function ConfirmDialog({ title, body, confirmLabel, tone = 'default', t, 
               <p className="mt-1 text-sm text-muted">{body}</p>
             </div>
           </div>
-          <button type="button" onClick={onCancel} className="rounded-md p-1 text-muted hover:bg-panel hover:text-white" aria-label={t.cancel}>
+          <button type="button" onClick={onCancel} className="rounded-md p-1 text-muted hover:bg-panel hover:text-white focus:outline-none focus:ring-2 focus:ring-accent/60" aria-label={t.cancel}>
             <X className="h-4 w-4" />
           </button>
         </div>
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onCancel} className="rounded-md border border-panel px-4 py-2 text-sm font-medium text-muted hover:bg-panel hover:text-white">
+          <button type="button" onClick={onCancel} className="rounded-md border border-panel px-4 py-2 text-sm font-medium text-muted hover:bg-panel hover:text-white focus:outline-none focus:ring-2 focus:ring-accent/60">
             {t.cancel}
           </button>
-          <button type="button" onClick={onConfirm} className={`rounded-md px-4 py-2 text-sm font-semibold text-white ${confirmClass}`}>
+          <button type="button" onClick={onConfirm} className={`rounded-md px-4 py-2 text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-accent/60 ${confirmClass}`}>
             {confirmLabel}
           </button>
         </div>

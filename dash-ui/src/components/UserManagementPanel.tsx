@@ -20,7 +20,7 @@ function Toggle({ enabled, disabled, onToggle }: { enabled: boolean; disabled?: 
       type="button"
       disabled={disabled}
       onClick={onToggle}
-      className={`relative h-5 w-9 rounded-full transition ${trackClass} ${disabled ? 'cursor-not-allowed opacity-70' : ''}`}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition focus:outline-none focus:ring-2 focus:ring-accent/60 ${trackClass} ${disabled ? 'cursor-not-allowed opacity-70' : ''}`}
       aria-pressed={enabled}
     >
       <span className={`absolute top-0.5 h-4 w-4 rounded-full transition ${disabled ? 'bg-muted' : 'bg-white'} ${enabled ? 'left-4' : 'left-0.5'}`} />
@@ -34,15 +34,15 @@ function PasswordCell({ user, t }: { user: DashboardUser; t: Copy }) {
   const canReveal = Boolean(password);
 
   return (
-    <div className="flex items-center justify-end gap-2">
-      <code className="max-w-36 truncate rounded bg-app px-2 py-1 text-xs text-muted">
+    <div className="flex min-w-0 items-center justify-end gap-2">
+      <code className="min-w-0 max-w-36 truncate rounded bg-app px-2 py-1 text-xs text-muted">
         {canReveal ? (visible ? password : '********') : t.noPasswordStored}
       </code>
       <button
         type="button"
         disabled={!canReveal}
         onClick={() => setVisible((v) => !v)}
-        className="rounded-md p-1.5 text-muted hover:bg-panel hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+        className="shrink-0 rounded-md p-1.5 text-muted hover:bg-panel hover:text-white focus:outline-none focus:ring-2 focus:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40"
         title={visible ? t.hidePassword : t.showPassword}
       >
         {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -117,7 +117,7 @@ function UserFormModal({
       >
         <div className="mb-5 flex items-center justify-between gap-4">
           <h2 className="text-lg font-semibold text-white">{title}</h2>
-          <button type="button" onClick={onClose} className="rounded-md p-1 text-muted hover:bg-panel hover:text-white" aria-label={t.cancel}>
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-muted hover:bg-panel hover:text-white focus:outline-none focus:ring-2 focus:ring-accent/60" aria-label={t.cancel}>
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -160,10 +160,10 @@ function UserFormModal({
         {error && <p className="mt-4 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-red-200">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-md border border-panel px-4 py-2 text-sm font-medium text-muted hover:bg-panel hover:text-white">
+          <button type="button" onClick={onClose} className="rounded-md border border-panel px-4 py-2 text-sm font-medium text-muted hover:bg-panel hover:text-white focus:outline-none focus:ring-2 focus:ring-accent/60">
             {t.cancel}
           </button>
-          <button type="submit" disabled={saving} className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-strong disabled:opacity-60">
+          <button type="submit" disabled={saving} className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-strong focus:outline-none focus:ring-2 focus:ring-accent/60 disabled:opacity-60">
             {isEdit ? t.save : t.create}
           </button>
         </div>
@@ -238,11 +238,11 @@ export function UserManagementPanel({ t }: { t: Copy }) {
         <button
           type="button"
           onClick={() => setShowAddModal(true)}
-          className="inline-flex items-center gap-2 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-white hover:bg-accent-strong"
+          className="inline-flex max-w-[45%] items-center gap-2 rounded-md bg-accent px-3 py-2 text-sm font-semibold text-white hover:bg-accent-strong focus:outline-none focus:ring-2 focus:ring-accent/60 sm:max-w-none"
         >
-          <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">{t.addUser}</span>
-          <span className="sm:hidden">{t.addUserShort}</span>
+          <Plus className="h-4 w-4 shrink-0" />
+          <span className="hidden truncate sm:inline">{t.addUser}</span>
+          <span className="truncate sm:hidden">{t.addUserShort}</span>
         </button>
       </div>
 
@@ -273,9 +273,9 @@ export function UserManagementPanel({ t }: { t: Copy }) {
                     transition={{ duration: 0.16 }}
                   >
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2 text-white">
+                      <div className="flex min-w-0 items-center gap-2 text-white">
                         {user.is_admin ? <ShieldCheck className="h-4 w-4 text-accent" /> : <span className="h-4 w-4 rounded-full bg-panel" />}
-                        <span className="font-medium">{user.username}</span>
+                        <span className="min-w-0 max-w-80 truncate font-medium">{user.username}</span>
                         {user.is_admin && <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-red-100">{t.admin}</span>}
                       </div>
                     </td>
@@ -291,10 +291,10 @@ export function UserManagementPanel({ t }: { t: Copy }) {
                     <td className="px-4 py-3">
                       {!user.is_admin && (
                         <div className="flex justify-end gap-1">
-                          <button type="button" onClick={() => setEditUser(user)} className="rounded-md p-2 text-muted hover:bg-panel hover:text-white" title={t.edit}>
+                          <button type="button" onClick={() => setEditUser(user)} className="rounded-md p-2 text-muted hover:bg-panel hover:text-white focus:outline-none focus:ring-2 focus:ring-accent/60" title={t.edit}>
                             <Pencil className="h-4 w-4" />
                           </button>
-                          <button type="button" onClick={() => setDeleteTarget(user)} className="rounded-md p-2 text-red-300 hover:bg-danger/10 hover:text-red-100" title={t.delete}>
+                          <button type="button" onClick={() => setDeleteTarget(user)} className="rounded-md p-2 text-red-300 hover:bg-danger/10 hover:text-red-100 focus:outline-none focus:ring-2 focus:ring-danger/60" title={t.delete}>
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
@@ -316,33 +316,33 @@ export function UserManagementPanel({ t }: { t: Copy }) {
                 transition={{ duration: 0.16 }}
               >
                 <div className="mb-3 flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2 text-white">
+                  <div className="flex min-w-0 items-center gap-2 text-white">
                     {user.is_admin ? <ShieldCheck className="h-4 w-4 text-accent" /> : <span className="h-4 w-4 rounded-full bg-panel" />}
-                    <span className="font-medium">{user.username}</span>
+                    <span className="min-w-0 break-words font-medium">{user.username}</span>
                     {user.is_admin && <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-red-100">{t.admin}</span>}
                   </div>
                   {!user.is_admin && (
-                    <div className="flex gap-1">
-                      <button type="button" onClick={() => setEditUser(user)} className="rounded-md p-1.5 text-muted hover:bg-panel hover:text-white" title={t.edit}>
+                    <div className="flex shrink-0 gap-1">
+                      <button type="button" onClick={() => setEditUser(user)} className="rounded-md p-1.5 text-muted hover:bg-panel hover:text-white focus:outline-none focus:ring-2 focus:ring-accent/60" title={t.edit}>
                         <Pencil className="h-4 w-4" />
                       </button>
-                      <button type="button" onClick={() => setDeleteTarget(user)} className="rounded-md p-1.5 text-red-300 hover:bg-danger/10" title={t.delete}>
+                      <button type="button" onClick={() => setDeleteTarget(user)} className="rounded-md p-1.5 text-red-300 hover:bg-danger/10 focus:outline-none focus:ring-2 focus:ring-danger/60" title={t.delete}>
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   )}
                 </div>
                 <div className="grid gap-3 text-sm">
-                  <div className="flex items-center justify-between text-muted">
+                  <div className="flex items-center justify-between gap-3 text-muted">
                     {t.canRestart}
                     <Toggle enabled={user.can_restart} disabled={user.is_admin} onToggle={() => updateUser(user, { can_restart: !user.can_restart })} />
                   </div>
-                  <div className="flex items-center justify-between text-muted">
+                  <div className="flex items-center justify-between gap-3 text-muted">
                     {t.canViewLogs}
                     <Toggle enabled={user.can_view_logs} disabled={user.is_admin} onToggle={() => updateUser(user, { can_view_logs: !user.can_view_logs })} />
                   </div>
-                  <div className="flex items-center justify-between text-muted">
-                    {t.decryptedPassword}
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-muted">
+                    <span className="min-w-0 truncate">{t.decryptedPassword}</span>
                     <PasswordCell user={user} t={t} />
                   </div>
                 </div>

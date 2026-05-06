@@ -172,9 +172,9 @@ export default function Dashboard({
         onLogout={() => setLogoutOpen(true)}
       />
 
-      <main className="mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:px-6 sm:py-6">
+      <main className="mx-auto grid w-full max-w-7xl gap-4 px-4 py-4 sm:px-6 sm:py-6">
         <motion.section
-          className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+          className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3 lg:grid-cols-4"
           initial={reduceMotion ? false : { opacity: 0, y: 8 }}
           animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
@@ -186,7 +186,7 @@ export default function Dashboard({
         </motion.section>
 
         <motion.section
-          className="grid gap-4 xl:grid-cols-[380px_1fr]"
+          className="grid min-w-0 gap-4 xl:grid-cols-[380px_minmax(0,1fr)]"
           initial={reduceMotion ? false : { opacity: 0, y: 10 }}
           animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
           transition={{ duration: 0.22, delay: reduceMotion ? 0 : 0.04, ease: 'easeOut' }}

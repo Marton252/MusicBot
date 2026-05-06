@@ -25,14 +25,15 @@ export function LogPanel({ logs, t }: { logs: string[]; t: Copy }) {
   const [level, setLevel] = useState<Level>('ALL');
   const [localClearIndex, setLocalClearIndex] = useState(0);
   const [follow, setFollow] = useState(true);
-  const endRef = useRef<HTMLDivElement>(null);
+  const logViewportRef = useRef<HTMLDivElement>(null);
   const visibleLogs = useMemo(() => {
     const scoped = logs.slice(localClearIndex);
     return level === 'ALL' ? scoped : scoped.filter((line) => line.includes(`[${level}]`));
   }, [level, localClearIndex, logs]);
 
   useEffect(() => {
-    if (follow) endRef.current?.scrollIntoView({ block: 'end' });
+    if (!follow || !logViewportRef.current) return;
+    logViewportRef.current.scrollTop = logViewportRef.current.scrollHeight;
   }, [follow, visibleLogs.length]);
 
   return (
@@ -47,15 +48,15 @@ export function LogPanel({ logs, t }: { logs: string[]; t: Copy }) {
           <span className="h-2 w-2 rounded-full bg-ok" />
           <h2 className="font-mono text-sm font-semibold text-white">{t.logs}</h2>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <div className="inline-flex items-center gap-1 rounded-md border border-panel bg-app p-1 text-xs">
+        <div className="flex min-w-0 flex-wrap gap-2">
+          <div className="inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-md border border-panel bg-app p-1 text-xs no-scrollbar">
             <ListFilter className="h-4 w-4 text-muted" />
             {(['ALL', 'INFO', 'WARNING', 'ERROR'] as const).map((item) => (
               <button
                 key={item}
                 type="button"
                 onClick={() => setLevel(item)}
-                className={`rounded px-2 py-1 font-semibold ${level === item ? 'bg-accent text-white' : 'text-muted hover:bg-panel hover:text-white'}`}
+                className={`shrink-0 rounded px-2 py-1 font-semibold focus:outline-none focus:ring-2 focus:ring-accent/60 ${level === item ? 'bg-accent text-white' : 'text-muted hover:bg-panel hover:text-white'}`}
               >
                 {item === 'ALL' ? t.allLevels : item}
               </button>
@@ -64,21 +65,21 @@ export function LogPanel({ logs, t }: { logs: string[]; t: Copy }) {
           <button
             type="button"
             onClick={() => setFollow((v) => !v)}
-            className={`rounded-md border border-panel px-3 py-1.5 text-xs font-semibold ${follow ? 'bg-panel text-white' : 'text-muted hover:bg-panel hover:text-white'}`}
+            className={`rounded-md border border-panel px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-accent/60 ${follow ? 'bg-panel text-white' : 'text-muted hover:bg-panel hover:text-white'}`}
           >
             {t.followLogs}
           </button>
           <button
             type="button"
             onClick={() => setLocalClearIndex(logs.length)}
-            className="inline-flex items-center gap-1 rounded-md border border-panel px-3 py-1.5 text-xs font-semibold text-muted hover:bg-panel hover:text-white"
+            className="inline-flex items-center gap-1 rounded-md border border-panel px-3 py-1.5 text-xs font-semibold text-muted hover:bg-panel hover:text-white focus:outline-none focus:ring-2 focus:ring-accent/60"
           >
             <Trash2 className="h-3.5 w-3.5" />
             {t.clearLogs}
           </button>
         </div>
       </div>
-      <div className="h-80 overflow-y-auto p-4 font-mono text-xs leading-6 text-slate-200 sm:h-96">
+      <div ref={logViewportRef} className="h-80 overflow-y-auto p-4 font-mono text-xs leading-6 text-slate-200 sm:h-96">
         {visibleLogs.length === 0 && <div className="text-muted">{t.noLogs}</div>}
         {visibleLogs.map((log, index) => (
           <motion.div
@@ -91,7 +92,6 @@ export function LogPanel({ logs, t }: { logs: string[]; t: Copy }) {
             <LogLine text={log} />
           </motion.div>
         ))}
-        <div ref={endRef} />
       </div>
     </motion.section>
   );

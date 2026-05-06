@@ -48,6 +48,14 @@ function getMetricValue(point: HistoryPoint, key: MetricKey): number {
   return point[key];
 }
 
+function metricDigits(key: MetricKey): number {
+  return key === 'ram' ? 0 : 1;
+}
+
+function formatMetricValue(metric: Pick<MetricConfig, 'key' | 'unit'>, value: number): string {
+  return `${round(value, metricDigits(metric.key))}${metric.unit}`;
+}
+
 function downsample(points: HistoryPoint[], maxPoints: number): HistoryPoint[] {
   if (points.length <= maxPoints) return points;
 
@@ -82,10 +90,10 @@ function summarize(points: HistoryPoint[], key: MetricKey) {
   const max = values.length ? Math.max(...values) : 0;
   const avg = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
   return {
-    current,
-    min: round(min),
-    max: round(max),
-    avg: round(avg),
+    current: round(current, metricDigits(key)),
+    min: round(min, metricDigits(key)),
+    max: round(max, metricDigits(key)),
+    avg: round(avg, metricDigits(key)),
   };
 }
 
@@ -131,6 +139,11 @@ function ChartGraphic({
   const activeY = y(getMetricValue(activePoint, metric.key));
   const tooltipAbove = activeY > height * 0.36;
   const showGuide = hoverIndex !== null;
+  const tooltipX = clamp((activeX / width) * 100, 4, 96);
+  const tooltipY = clamp((activeY / height) * 100, 8, 92);
+  const horizontalClass =
+    activeX < width * 0.32 ? '' : activeX > width * 0.68 ? '-translate-x-full' : '-translate-x-1/2';
+  const verticalClass = tooltipAbove ? '-translate-y-[calc(100%+0.5rem)]' : 'translate-y-2';
 
   const updateHoverFromClientX = (target: SVGSVGElement, clientX: number) => {
     const rect = target.getBoundingClientRect();
@@ -154,7 +167,7 @@ function ChartGraphic({
   };
 
   return (
-    <div className="relative rounded-md border border-panel bg-app p-2">
+    <div className="relative min-w-0 rounded-md border border-panel bg-app p-2">
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className={`${size === 'large' ? 'aspect-[760/320]' : 'aspect-[420/178]'} w-full cursor-crosshair touch-none`}
@@ -206,15 +219,15 @@ function ChartGraphic({
           />
         ) : null}
         <circle cx={activeX} cy={activeY} r={size === 'large' ? 4.5 : 3.5} fill={metric.color} stroke="#0b0d12" strokeWidth="2" />
-        <text x="4" y={pad.top + 4} fill="#8d97ad" fontSize={size === 'large' ? '12' : '10'}>
+        <text x="4" y={pad.top + 4} fill="#8d97ad" fontSize={size === 'large' ? '11' : '9'}>
           {domainMax}
           {metric.unit}
         </text>
-        <text x="4" y={pad.top + plotHeight / 2 + 4} fill="#8d97ad" fontSize={size === 'large' ? '12' : '10'}>
+        <text x="4" y={pad.top + plotHeight / 2 + 4} fill="#8d97ad" fontSize={size === 'large' ? '11' : '9'}>
           {midValue}
           {metric.unit}
         </text>
-        <text x="4" y={height - pad.bottom + 4} fill="#8d97ad" fontSize={size === 'large' ? '12' : '10'}>
+        <text x="4" y={height - pad.bottom + 4} fill="#8d97ad" fontSize={size === 'large' ? '11' : '9'}>
           0{metric.unit}
         </text>
         <text x={pad.left} y={height - 8} fill="#8d97ad" fontSize={size === 'large' ? '12' : '10'}>
@@ -227,25 +240,19 @@ function ChartGraphic({
 
       {showGuide ? (
         <div
-          className={`pointer-events-none absolute z-10 min-w-36 rounded-md border border-panel bg-surface px-3 py-2 text-xs shadow-panel ${
-            tooltipAbove ? '-translate-x-1/2 -translate-y-[calc(100%+0.5rem)]' : '-translate-x-1/2 translate-y-2'
-          }`}
-          style={{ left: `${(activeX / width) * 100}%`, top: `${(activeY / height) * 100}%` }}
+          className={`pointer-events-none absolute z-10 w-max min-w-36 max-w-[calc(100%-1rem)] rounded-md border border-panel bg-surface px-3 py-2 text-xs shadow-panel ${horizontalClass} ${verticalClass}`}
+          style={{ left: `${tooltipX}%`, top: `${tooltipY}%` }}
         >
           <div className="mb-1 flex items-center justify-between gap-3">
             <span className="font-semibold text-white">{metric.title}</span>
-            <span className="font-mono text-white">
-              {getMetricValue(activePoint, metric.key)}
-              {metric.unit}
-            </span>
+            <span className="font-mono text-white">{formatMetricValue(metric, getMetricValue(activePoint, metric.key))}</span>
           </div>
           <div className="grid gap-0.5 text-muted">
             <span>
               {t.time}: {formatTimeLabel(activePoint.t, true)}
             </span>
             <span>
-              {t.value}: {getMetricValue(activePoint, metric.key)}
-              {metric.unit}
+              {t.value}: {formatMetricValue(metric, getMetricValue(activePoint, metric.key))}
             </span>
           </div>
         </div>
@@ -274,7 +281,7 @@ function ChartCard({
   if (chartPoints.length < 2) {
     return (
       <motion.div
-        className="rounded-lg border border-panel bg-surface p-4"
+        className="min-w-0 rounded-lg border border-panel bg-surface p-4"
         initial={reduceMotion ? false : { opacity: 0, y: 8 }}
         animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
         transition={{ duration: 0.18 }}
@@ -287,7 +294,7 @@ function ChartCard({
 
   return (
     <motion.div
-      className="rounded-lg border border-panel bg-surface p-4"
+      className="min-w-0 rounded-lg border border-panel bg-surface p-4"
       initial={reduceMotion ? false : { opacity: 0, y: 8 }}
       animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
       whileHover={reduceMotion ? undefined : { y: -2 }}
@@ -298,9 +305,9 @@ function ChartCard({
         <ChartGraphic metric={metric} points={chartPoints} timeRange={timeRange} size="compact" t={t} />
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-        <Stat label={t.current} value={`${stats.current}${metric.unit}`} />
-        <Stat label={t.average} value={`${stats.avg}${metric.unit}`} />
-        <Stat label={t.maximum} value={`${stats.max}${metric.unit}`} />
+        <Stat label={t.current} value={formatMetricValue(metric, stats.current)} />
+        <Stat label={t.average} value={formatMetricValue(metric, stats.avg)} />
+        <Stat label={t.maximum} value={formatMetricValue(metric, stats.max)} />
         <Stat label={t.samples} value={String(points.length)} />
       </div>
     </motion.div>
@@ -341,13 +348,13 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function RangeSelector({ timeRange, onRangeChange }: { timeRange: number; onRangeChange: (range: number) => void }) {
   return (
-    <div className="flex max-w-full gap-1 overflow-x-auto rounded-md border border-panel bg-app p-1">
+    <div className="flex max-w-full gap-1 overflow-x-auto rounded-md border border-panel bg-app p-1 no-scrollbar">
       {TIME_RANGES.map((range) => (
         <button
           key={range.seconds}
           type="button"
           onClick={() => onRangeChange(range.seconds)}
-          className={`rounded px-2.5 py-1 text-xs font-semibold transition ${
+          className={`shrink-0 rounded px-2.5 py-1 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-accent/60 ${
             timeRange === range.seconds ? 'bg-accent text-white' : 'text-muted hover:bg-panel hover:text-white'
           }`}
         >
@@ -387,7 +394,7 @@ function ChartDetailModal({
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/75 p-3 py-4 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       initial={reduceMotion ? false : { opacity: 0 }}
@@ -397,25 +404,42 @@ function ChartDetailModal({
       onClick={onClose}
     >
       <motion.div
-        className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-lg border border-panel bg-surface p-4 shadow-panel sm:p-5"
+        className="w-full max-w-5xl rounded-lg border border-panel bg-surface p-4 shadow-panel sm:max-h-[92vh] sm:overflow-y-auto sm:p-5"
         initial={reduceMotion ? false : { opacity: 0, scale: 0.98, y: 10 }}
         animate={reduceMotion ? undefined : { opacity: 1, scale: 1, y: 0 }}
         exit={reduceMotion ? undefined : { opacity: 0, scale: 0.98, y: 10 }}
         transition={{ duration: 0.18, ease: 'easeOut' }}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-start">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm text-muted">
-              <span style={{ color: metric.color }}>{metric.icon}</span>
-              {t.chartDetails}
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-2 text-sm text-muted">
+                  <span style={{ color: metric.color }}>{metric.icon}</span>
+                  <span className="truncate">{t.chartDetails}</span>
+                </div>
+                <h2 className="mt-1 truncate text-xl font-semibold text-white">{metric.title}</h2>
+                <p className="font-mono text-sm text-muted">{metric.value}</p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="shrink-0 rounded-md p-2 text-muted transition hover:bg-panel hover:text-white focus:outline-none focus:ring-2 focus:ring-accent/60 sm:hidden"
+                aria-label={t.close}
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
-            <h2 className="mt-1 truncate text-xl font-semibold text-white">{metric.title}</h2>
-            <p className="font-mono text-sm text-muted">{metric.value}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="grid min-w-0 items-start gap-2 sm:flex sm:items-center">
             <RangeSelector timeRange={timeRange} onRangeChange={onRangeChange} />
-            <button type="button" onClick={onClose} className="rounded-md p-2 text-muted transition hover:bg-panel hover:text-white" aria-label={t.close}>
+            <button
+              type="button"
+              onClick={onClose}
+              className="hidden rounded-md p-2 text-muted transition hover:bg-panel hover:text-white focus:outline-none focus:ring-2 focus:ring-accent/60 sm:block"
+              aria-label={t.close}
+            >
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -428,9 +452,9 @@ function ChartDetailModal({
         )}
 
         <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-          <Stat label={t.current} value={`${stats.current}${metric.unit}`} />
-          <Stat label={t.average} value={`${stats.avg}${metric.unit}`} />
-          <Stat label={t.maximum} value={`${stats.max}${metric.unit}`} />
+          <Stat label={t.current} value={formatMetricValue(metric, stats.current)} />
+          <Stat label={t.average} value={formatMetricValue(metric, stats.avg)} />
+          <Stat label={t.maximum} value={formatMetricValue(metric, stats.max)} />
           <Stat label={t.samples} value={String(points.length)} />
         </div>
       </motion.div>
@@ -459,7 +483,7 @@ export function PerformancePanel({
     {
       key: 'cpu',
       title: t.cpu,
-      value: stats?.cpu_usage !== undefined ? `${round(stats.cpu_usage)}%` : '...',
+      value: stats?.cpu_usage !== undefined ? `${round(stats.cpu_usage, 1)}%` : '...',
       icon: <Cpu className="h-4 w-4" />,
       color: '#8ea0ff',
       unit: '%',
@@ -468,7 +492,7 @@ export function PerformancePanel({
     {
       key: 'ram',
       title: t.ram,
-      value: stats?.ram_usage_mb !== undefined ? `${stats.ram_usage_mb} MB` : '...',
+      value: stats?.ram_usage_mb !== undefined ? `${round(stats.ram_usage_mb, 0)} MB` : '...',
       icon: <Database className="h-4 w-4" />,
       color: '#1ed39a',
       unit: ' MB',
@@ -476,7 +500,7 @@ export function PerformancePanel({
     {
       key: 'ping',
       title: t.ping,
-      value: stats?.ping !== undefined ? `${stats.ping}ms` : '...',
+      value: stats?.ping !== undefined ? `${round(stats.ping, 1)}ms` : '...',
       icon: <Activity className="h-4 w-4" />,
       color: '#ff7676',
       unit: 'ms',
@@ -486,7 +510,7 @@ export function PerformancePanel({
 
   return (
     <motion.section
-      className="rounded-lg border border-panel bg-surface p-4 shadow-panel"
+      className="min-w-0 rounded-lg border border-panel bg-surface p-4 shadow-panel"
       initial={reduceMotion ? false : { opacity: 0, y: 10 }}
       animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
       transition={{ duration: 0.22, ease: 'easeOut' }}
@@ -499,7 +523,7 @@ export function PerformancePanel({
         <RangeSelector timeRange={timeRange} onRangeChange={onRangeChange} />
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid min-w-0 gap-3 lg:grid-cols-3">
         {metrics.map((metric) => (
           <ChartCard key={metric.key} metric={metric} points={visible} timeRange={timeRange} t={t} onExpand={() => setExpandedMetric(metric.key)} />
         ))}
