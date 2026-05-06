@@ -10,6 +10,7 @@ on:
 
 jobs:
   summary:
+    if: ${{ github.event.issue.pull_request == null }}
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -33,7 +34,8 @@ jobs:
 
       - name: Comment with AI summary
         run: |
-          gh issue comment $ISSUE_NUMBER --body "$RESPONSE"
+          printf '%s\n' "$RESPONSE" > response.md
+          gh issue comment "$ISSUE_NUMBER" --body-file response.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
