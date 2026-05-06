@@ -1,17 +1,26 @@
+# ═══════════════════════════════════════════════════════════════════
+# Lavalink v4 configuration for Discord Music Bot
+#
+# This file is mounted by docker-compose.example.yml.
+# LAVALINK_PORT and LAVALINK_PASSWORD are read from .env.
+# ═══════════════════════════════════════════════════════════════════
+
 server:
-  port: 2333
+  port: ${LAVALINK_PORT:2333}
   address: 0.0.0.0
   http2:
     enabled: false
 
 lavalink:
   plugins:
-    # Lavalink v4 deprecates the built-in YouTube source. Keep this pinned
-    # and update it with Lavalink/youtube-source releases when needed.
+    # Lavalink v4 deprecates the built-in YouTube source.
+    # Keep this plugin pinned and update intentionally.
     - dependency: "dev.lavalink.youtube:youtube-plugin:1.17.0"
       snapshot: false
+
   server:
-    password: "change_me"
+    password: "${LAVALINK_PASSWORD:change_me}"
+
     sources:
       youtube: false
       bandcamp: true
@@ -21,6 +30,7 @@ lavalink:
       nico: false
       http: true
       local: false
+
     filters:
       volume: true
       equalizer: true
@@ -32,6 +42,8 @@ lavalink:
       rotation: true
       channelMix: true
       lowPass: true
+
+    # Conservative defaults for stable Discord music playback.
     bufferDurationMs: 400
     frameBufferDurationMs: 5000
     opusEncodingQuality: 10
@@ -50,6 +62,9 @@ plugins:
     allowSearch: true
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
+
+    # MUSIC works well for playback; WEB/ANDROID_VR help with search and
+    # direct links when YouTube changes client behavior.
     clients:
       - MUSIC
       - WEB

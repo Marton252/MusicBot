@@ -1,10 +1,19 @@
 # ═══════════════════════════════════════════════════════════════════
-# Discord Music Bot — Docker Compose (Example)
+# Discord Music Bot - Docker Compose Example
+# ═══════════════════════════════════════════════════════════════════
 #
 # Quick start:
-#   1. Copy .env.example to .env and fill in your values
-#   2. Rename this file to docker-compose.yml  (or use -f flag)
-#   3. docker compose up -d
+#   1. Copy .env.example to .env and fill in your values.
+#   2. Keep lavalink/application.yml.example next to this compose file.
+#   3. Rename this file to docker-compose.yml, or run with -f.
+#   4. Start everything with: docker compose up -d
+#
+# Services:
+#   bot       Discord bot + Quart dashboard
+#   lavalink Lavalink v4 audio node, internal to the compose network
+#
+# Dashboard:
+#   https://localhost:${DASHBOARD_PORT:-25825}
 # ═══════════════════════════════════════════════════════════════════
 
 services:
@@ -15,9 +24,11 @@ services:
     depends_on:
       - lavalink
 
-    # All config comes from .env — no overrides needed.
-    # Defaults: DASHBOARD_BIND=0.0.0.0, MUSIC_BACKEND=lavalink,
-    # DATABASE_PATH=/app/data/database.db (in Docker)
+    # All runtime config comes from .env.
+    # Important defaults:
+    #   DASHBOARD_BIND=0.0.0.0
+    #   MUSIC_BACKEND=lavalink
+    #   DATABASE_PATH=/app/data/database.db in Docker
     env_file:
       - .env
 
@@ -28,25 +39,27 @@ services:
       - "${DASHBOARD_PORT:-25825}:${DASHBOARD_PORT:-25825}"
 
     volumes:
-      # Persist the SQLite database across container rebuilds
+      # Persist the SQLite database across container rebuilds.
       - bot-data:/app/data
 
-      # Optional: mount your own TLS certificates instead of the auto-generated ones
+      # Optional: mount your own TLS certificates instead of generated certs.
       # - ./certs:/app/certs:ro
 
-      # Optional: mount a cookies.txt file for YouTube authentication
+      # Optional: mount a cookies.txt file for YouTube authentication.
       # - ./cookies.txt:/app/cookies.txt:ro
 
-  # Default audio backend. Keep the 2333 port internal to the compose network.
-  # If you choose MUSIC_BACKEND=ffmpeg, you can remove or comment this service.
+  # Default audio backend. The 2333 port is intentionally not published.
+  # If you set MUSIC_BACKEND=ffmpeg, this service can be removed.
   lavalink:
     image: ghcr.io/lavalink-devs/lavalink:4-alpine
     container_name: musicbot-lavalink
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       - _JAVA_OPTIONS=-Xmx1G
     expose:
-      - "2333"
+      - "${LAVALINK_PORT:-2333}"
     volumes:
       - ./lavalink/application.yml.example:/opt/Lavalink/application.yml:ro
       - lavalink-plugins:/opt/Lavalink/plugins
