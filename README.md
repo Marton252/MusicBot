@@ -75,6 +75,8 @@ python bot.py
 
 The dashboard is served at `https://localhost:25825` by default. Self-signed TLS certificates are generated automatically on first run.
 
+For local audio playback, either run a Lavalink v4 node that matches the `.env` settings or set `MUSIC_BACKEND=ffmpeg` to use the built-in FFmpeg backend.
+
 ### Docker
 
 Use the published image from GitHub Container Registry:
@@ -83,6 +85,8 @@ Use the published image from GitHub Container Registry:
 mkdir musicbot && cd musicbot
 curl -O https://raw.githubusercontent.com/Marton252/MusicBot/main/.env.example
 curl -O https://raw.githubusercontent.com/Marton252/MusicBot/main/docker-compose.example.yml
+mkdir -p lavalink
+curl -o lavalink/application.yml.example https://raw.githubusercontent.com/Marton252/MusicBot/main/lavalink/application.yml.example
 
 cp .env.example .env
 cp docker-compose.example.yml docker-compose.yml
@@ -174,8 +178,8 @@ flowchart TD
     Cogs --> Extractor["services/extractor.py"]
     Cogs --> Lyrics["services/lyrics.py"]
 
-    Player --> Voice["Discord Voice + FFmpeg"]
-    Player --> Lavalink["Optional Lavalink node"]
+    Player --> Lavalink["Lavalink node"]
+    Player --> Voice["Discord Voice + FFmpeg fallback"]
     Extractor --> Media["yt-dlp: YouTube/SoundCloud"]
     Extractor --> Spotify["Spotify metadata"]
     Lyrics --> Genius["Genius API"]
@@ -225,9 +229,10 @@ Release tags trigger the Docker publish workflow and push images to GHCR.
 | Tag | Meaning |
 | --- | --- |
 | `latest` | Most recent stable image. |
-| `1.0.4` | Exact release version. |
-| `1.0` | Latest patch in the `1.0` line. |
-| `1` | Latest release in major version `1`. |
+| `2.0.0` | Current major release with Lavalink as the default backend. |
+| `2.0` | Latest patch in the `2.0` line. |
+| `2` | Latest release in major version `2`. |
+| `1.0.4` | Last pre-Lavalink-default release line. |
 
 Useful Docker commands:
 
