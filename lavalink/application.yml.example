@@ -1,0 +1,61 @@
+server:
+  port: 2333
+  address: 0.0.0.0
+  http2:
+    enabled: false
+
+lavalink:
+  plugins:
+    # Lavalink v4 deprecates the built-in YouTube source. Keep this pinned
+    # and update it with Lavalink/youtube-source releases when needed.
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.17.0"
+      snapshot: false
+  server:
+    password: "change_me"
+    sources:
+      youtube: false
+      bandcamp: true
+      soundcloud: true
+      twitch: false
+      vimeo: true
+      nico: false
+      http: true
+      local: false
+    filters:
+      volume: true
+      equalizer: true
+      karaoke: true
+      timescale: true
+      tremolo: true
+      vibrato: true
+      distortion: true
+      rotation: true
+      channelMix: true
+      lowPass: true
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    opusEncodingQuality: 10
+    resamplingQuality: LOW
+    trackStuckThresholdMs: 10000
+    useSeekGhosting: true
+    youtubePlaylistLoadLimit: 6
+    playerUpdateInterval: 5
+    youtubeSearchEnabled: true
+    soundcloudSearchEnabled: true
+    soundcloudFilterOutPreviewTracks: false
+
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+    clients:
+      - MUSIC
+      - WEB
+      - ANDROID_VR
+
+logging:
+  level:
+    root: INFO
+    lavalink: INFO

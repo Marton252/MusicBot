@@ -58,6 +58,7 @@ class MusicBot(commands.AutoShardedBot):
         self.embed_color: int = get_embed_color()
         self.db = shared_db
         self.dashboard_task: asyncio.Task | None = None
+        self.lavalink_task: asyncio.Task | None = None
         from datetime import datetime, UTC
         self.start_time = datetime.now(UTC)
 
@@ -97,6 +98,11 @@ class MusicBot(commands.AutoShardedBot):
 
         logger.info("Setting up database...")
         await self.db.connect()
+
+        from services.music.lavalink import connect_lavalink, is_lavalink_active, lavalink_requested, reconnect_until_ready
+        await connect_lavalink(self)
+        if lavalink_requested() and not is_lavalink_active():
+            self.lavalink_task = asyncio.create_task(reconnect_until_ready(self))
 
         # Register command translator
         from services.language import CommandTranslator
@@ -191,6 +197,10 @@ class MusicBot(commands.AutoShardedBot):
             self.dashboard_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self.dashboard_task
+        if self.lavalink_task and not self.lavalink_task.done():
+            self.lavalink_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self.lavalink_task
 
         from services.player import manager
         for player in list(manager.players.values()):
@@ -203,8 +213,10 @@ class MusicBot(commands.AutoShardedBot):
 
         from services.extractor import shutdown_ytdl_executor
         from services.lyrics import shutdown_lyrics_executor
+        from services.music.lavalink import close_lavalink
         shutdown_ytdl_executor()
         shutdown_lyrics_executor()
+        await close_lavalink()
 
         await self.db.close()
 

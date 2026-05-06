@@ -12,9 +12,12 @@ services:
     image: ghcr.io/marton252/musicbot:latest
     container_name: discord-musicbot
     restart: unless-stopped
+    depends_on:
+      - lavalink
 
     # All config comes from .env — no overrides needed.
-    # Defaults: DASHBOARD_BIND=0.0.0.0, DATABASE_PATH=/app/data/database.db (in Docker)
+    # Defaults: DASHBOARD_BIND=0.0.0.0, MUSIC_BACKEND=lavalink,
+    # DATABASE_PATH=/app/data/database.db (in Docker)
     env_file:
       - .env
 
@@ -34,5 +37,20 @@ services:
       # Optional: mount a cookies.txt file for YouTube authentication
       # - ./cookies.txt:/app/cookies.txt:ro
 
+  # Default audio backend. Keep the 2333 port internal to the compose network.
+  # If you choose MUSIC_BACKEND=ffmpeg, you can remove or comment this service.
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4-alpine
+    container_name: musicbot-lavalink
+    restart: unless-stopped
+    environment:
+      - _JAVA_OPTIONS=-Xmx1G
+    expose:
+      - "2333"
+    volumes:
+      - ./lavalink/application.yml.example:/opt/Lavalink/application.yml:ro
+      - lavalink-plugins:/opt/Lavalink/plugins
+
 volumes:
   bot-data:
+  lavalink-plugins:

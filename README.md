@@ -8,7 +8,7 @@
 
 A modern Discord music bot with slash commands, interactive player controls, saved queues, audio filters, Genius lyrics, multilingual support, and a React dashboard.
 
-**Stack:** Python 3.12 · discord.py · FFmpeg · yt-dlp · SQLite · Quart · Hypercorn · React · Vite · Tailwind CSS · Docker
+**Stack:** Python 3.12 · discord.py · Lavalink/Wavelink · FFmpeg fallback · yt-dlp · SQLite · Quart · Hypercorn · React · Vite · Tailwind CSS · Docker
 
 ## Features
 
@@ -16,6 +16,7 @@ A modern Discord music bot with slash commands, interactive player controls, sav
 - **Interactive now-playing panel** with pause/resume, skip, stop, queue, shuffle, repeat, volume, filters, lyrics, and report controls.
 - **YouTube, SoundCloud, and Spotify support** using yt-dlp extraction plus Spotify metadata resolution.
 - **Audio filters**: `bassboost`, `nightcore`, `vaporwave`, `karaoke`, and `8d`.
+- **Lavalink audio backend by default** for a separate audio node, better buffering, filter support, and future crossfade work.
 - **Saved queues** with `/music save`, `/music load`, and `/music saved`.
 - **Dashboard** with live stats, logs, restart controls, and role-based user management.
 - **Localization** for English and Hungarian server settings.
@@ -90,7 +91,7 @@ cp docker-compose.example.yml docker-compose.yml
 docker compose up -d
 ```
 
-The compose file uses `ghcr.io/marton252/musicbot:latest`, persists SQLite data in a Docker volume, and exposes `${DASHBOARD_PORT:-25825}`.
+The compose file starts both the bot and the internal Lavalink node, uses `ghcr.io/marton252/musicbot:latest`, persists SQLite data in a Docker volume, and exposes `${DASHBOARD_PORT:-25825}`.
 
 ## Commands
 
@@ -149,6 +150,20 @@ Important dashboard environment variables:
 
 See [.env.example](.env.example) for the complete configuration template.
 
+Optional audio backend variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `MUSIC_BACKEND` | `lavalink` by default; use `ffmpeg` for the built-in fallback or `auto` for best-effort fallback. |
+| `LAVALINK_HOST` / `LAVALINK_PORT` | Lavalink node address, default `lavalink:2333` for Docker Compose. |
+| `LAVALINK_PASSWORD` | Shared password for the bot and Lavalink node. |
+| `LAVALINK_SECURE` | Enables HTTPS/WSS connections to external Lavalink nodes. |
+| `LAVALINK_CONNECT_RETRIES` | Startup connection attempts for compose/node warm-up. |
+| `LAVALINK_CONNECT_RETRY_DELAY` | Delay between Lavalink startup connection attempts. |
+| `LAVALINK_CROSSFADE_SECONDS` | Reserved for future true crossfade; keep `0` for now. |
+
+If the node is still warming up after startup, the bot keeps retrying in the background. Set `MUSIC_BACKEND=ffmpeg` if you want to run without Lavalink.
+
 ## Architecture
 
 ```mermaid
@@ -160,6 +175,7 @@ flowchart TD
     Cogs --> Lyrics["services/lyrics.py"]
 
     Player --> Voice["Discord Voice + FFmpeg"]
+    Player --> Lavalink["Optional Lavalink node"]
     Extractor --> Media["yt-dlp: YouTube/SoundCloud"]
     Extractor --> Spotify["Spotify metadata"]
     Lyrics --> Genius["Genius API"]

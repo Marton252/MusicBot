@@ -90,24 +90,59 @@ COOKIES_FROM_BROWSER: str = os.getenv("COOKIES_FROM_BROWSER", "")
 COOKIES_FILE: str = os.getenv("COOKIES_FILE", "")
 
 # Web Dashboard Settings
-def _parse_port(value: str, default: int = 25825) -> int:
+def _parse_port(value: str, default: int = 25825, name: str = "DASHBOARD_PORT") -> int:
     try:
         port = int(value)
         if 1 <= port <= 65535:
             return port
     except (TypeError, ValueError):
         pass
-    logger.warning("Invalid DASHBOARD_PORT=%r; using %d.", value, default)
+    logger.warning("Invalid %s=%r; using %d.", name, value, default)
     return default
 
 
-DASHBOARD_PORT: int = _parse_port(os.getenv("DASHBOARD_PORT", "25825"))
+DASHBOARD_PORT: int = _parse_port(os.getenv("DASHBOARD_PORT", "25825"), name="DASHBOARD_PORT")
 DASHBOARD_BIND: str = os.getenv("DASHBOARD_BIND", "0.0.0.0")
 SSL_CERT_PATH: str = os.getenv("SSL_CERT_PATH", "certs/cert.pem")
 SSL_KEY_PATH: str = os.getenv("SSL_KEY_PATH", "certs/key.pem")
 TRUSTED_PROXY_IPS: tuple[str, ...] = tuple(
     ip.strip() for ip in os.getenv("TRUSTED_PROXY_IPS", "").split(",") if ip.strip()
 )
+
+# Audio backend settings. Lavalink is the default; FFmpeg remains available as a fallback mode.
+MUSIC_BACKEND: str = os.getenv("MUSIC_BACKEND", "lavalink").strip().lower()
+if MUSIC_BACKEND not in {"ffmpeg", "lavalink", "auto"}:
+    logger.warning("Invalid MUSIC_BACKEND=%r; using lavalink.", MUSIC_BACKEND)
+    MUSIC_BACKEND = "lavalink"
+
+LAVALINK_HOST: str = os.getenv("LAVALINK_HOST", "lavalink").strip() or "lavalink"
+LAVALINK_PORT: int = _parse_port(os.getenv("LAVALINK_PORT", "2333"), 2333, name="LAVALINK_PORT")
+LAVALINK_PASSWORD: str = os.getenv("LAVALINK_PASSWORD", "change_me")
+LAVALINK_SECURE: bool = os.getenv("LAVALINK_SECURE", "false").strip().lower() in {"1", "true", "yes", "on"}
+try:
+    LAVALINK_CONNECT_RETRIES: int = max(1, int(os.getenv("LAVALINK_CONNECT_RETRIES", "12")))
+except ValueError:
+    logger.warning(
+        "Invalid LAVALINK_CONNECT_RETRIES=%r; using 12.",
+        os.getenv("LAVALINK_CONNECT_RETRIES"),
+    )
+    LAVALINK_CONNECT_RETRIES = 12
+try:
+    LAVALINK_CONNECT_RETRY_DELAY: float = max(0.5, float(os.getenv("LAVALINK_CONNECT_RETRY_DELAY", "5")))
+except ValueError:
+    logger.warning(
+        "Invalid LAVALINK_CONNECT_RETRY_DELAY=%r; using 5.",
+        os.getenv("LAVALINK_CONNECT_RETRY_DELAY"),
+    )
+    LAVALINK_CONNECT_RETRY_DELAY = 5.0
+try:
+    LAVALINK_CROSSFADE_SECONDS: int = max(0, int(os.getenv("LAVALINK_CROSSFADE_SECONDS", "0")))
+except ValueError:
+    logger.warning(
+        "Invalid LAVALINK_CROSSFADE_SECONDS=%r; using 0.",
+        os.getenv("LAVALINK_CROSSFADE_SECONDS"),
+    )
+    LAVALINK_CROSSFADE_SECONDS = 0
 
 # Dashboard admin credentials — refuse to use known-weak password defaults
 DASHBOARD_ADMIN_USER: str = os.getenv("DASHBOARD_ADMIN_USER", "admin")

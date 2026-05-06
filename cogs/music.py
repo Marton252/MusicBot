@@ -14,7 +14,8 @@ from config import MAX_QUEUE_SIZE
 from services.extractor import YTDLSource, is_playlist_url, _detect_platform
 from services.language import language
 from services.lyrics import lyrics_service
-from services.music.playback import AudioFilter
+from services.music import lavalink
+from services.music.playback import AudioFilter, PlaybackState
 from services.music.policies import can_control as policy_can_control
 from services.music.policies import is_same_voice as policy_is_same_voice
 from services.music.queue import QueueItem
@@ -84,6 +85,18 @@ def _clean_song_title(track: dict) -> str:
                 return f"{uploader} {title}"
                 
     return title
+
+
+async def _resolve_track(query: str, *, requester_id: int | None = None) -> dict | None:
+    if lavalink.should_use_lavalink_path():
+        return await lavalink.resolve_track(query, requester_id=requester_id)
+    return await YTDLSource.extract_info(query)
+
+
+async def _resolve_playlist_track(query: str, *, requester_id: int | None = None) -> dict | None:
+    if lavalink.should_use_lavalink_path():
+        return await lavalink.resolve_playlist_track(query, requester_id=requester_id)
+    return await YTDLSource.resolve_playlist_track(query)
 
 def _can_control(interaction: discord.Interaction, player: MusicPlayer) -> bool:
     """Check if the user can control the player.
@@ -580,6 +593,44 @@ class Music(commands.Cog):
                 player.stop()
                 await manager.cleanup(member.guild)
 
+    @commands.Cog.listener()
+    async def on_wavelink_track_end(self, payload) -> None:
+        player = manager.get_existing_player(payload.player.guild.id)
+        if player:
+            player.next.set()
+
+    @commands.Cog.listener()
+    async def on_wavelink_track_exception(self, payload) -> None:
+        player = manager.get_existing_player(payload.player.guild.id)
+        if player:
+            player.state = PlaybackState.FAILED
+            player.last_error = "Lavalink track exception"
+            player.next.set()
+
+    @commands.Cog.listener()
+    async def on_wavelink_track_stuck(self, payload) -> None:
+        player = manager.get_existing_player(payload.player.guild.id)
+        if player:
+            player.state = PlaybackState.RECOVERING
+            player.last_error = "Lavalink track stuck"
+            player.next.set()
+
+    @commands.Cog.listener()
+    async def on_wavelink_node_ready(self, payload) -> None:
+        lavalink.mark_connected()
+
+    @commands.Cog.listener()
+    async def on_wavelink_node_disconnected(self, payload) -> None:
+        lavalink.mark_disconnected()
+        for player in manager.players.values():
+            if player.backend.name == "lavalink":
+                player.state = PlaybackState.RECOVERING
+                player.last_error = "Lavalink node disconnected"
+                if player.current:
+                    player.queue.appendleft(player.current)
+                    player._queue_ready.set()
+                player.next.set()
+
     @app_commands.guild_only()
     @app_commands.command(name="play", description="Play a song from YouTube, Spotify, or SoundCloud.")
     async def play(self, interaction: discord.Interaction, query: str) -> None:
@@ -598,7 +649,10 @@ class Music(commands.Cog):
         # Connect to voice if not already
         connected_here = False
         if not interaction.guild.voice_client:
-            await interaction.user.voice.channel.connect()
+            try:
+                await manager.connect_to_voice(interaction.user.voice.channel)
+            except RuntimeError as exc:
+                return await interaction.followup.send(str(exc), ephemeral=True)
             connected_here = True
         elif interaction.guild.voice_client.channel != interaction.user.voice.channel:
             msg = await language.get_string(interaction.guild_id, "msg_error_same_voice_required")
@@ -634,7 +688,7 @@ class Music(commands.Cog):
                     break
                 batch = playlist_tracks[i : i + BATCH]
                 tasks = [
-                    YTDLSource.resolve_playlist_track(t['query']) for t in batch
+                    _resolve_playlist_track(t['query'], requester_id=interaction.user.id) for t in batch
                 ]
                 results = await asyncio.gather(*tasks)
 
@@ -671,7 +725,7 @@ class Music(commands.Cog):
             return
 
         # ── Single track ──────────────────────────────────────────────
-        info = await YTDLSource.extract_info(query)
+        info = await _resolve_track(query, requester_id=interaction.user.id)
 
         if not info:
             msg = await language.get_string(interaction.guild_id, "msg_error_no_results")
@@ -681,7 +735,6 @@ class Music(commands.Cog):
                 await manager.cleanup(interaction.guild)
             return
 
-        # Tag who requested this track
         info["requester_id"] = interaction.user.id
 
         if not player.enqueue(info):
@@ -960,7 +1013,10 @@ async def setup(bot: commands.Bot) -> None:
 
         await interaction.response.defer(ephemeral=True)
         if not interaction.guild.voice_client:
-            await interaction.user.voice.channel.connect()
+            try:
+                await manager.connect_to_voice(interaction.user.voice.channel)
+            except RuntimeError as exc:
+                return await interaction.followup.send(str(exc), ephemeral=True)
         elif interaction.guild.voice_client.channel != interaction.user.voice.channel:
             msg = await language.get_string(interaction.guild_id, "msg_error_same_voice_required")
             await interaction.followup.send(msg, ephemeral=True)
@@ -969,7 +1025,7 @@ async def setup(bot: commands.Bot) -> None:
         session = await sessions.for_guild(interaction, cog=cog)
         added = 0
         for row in rows:
-            info = await YTDLSource.extract_info(row["webpage_url"])
+            info = await _resolve_track(row["webpage_url"], requester_id=interaction.user.id)
             if not info:
                 info = QueueItem(
                     title=row["title"],

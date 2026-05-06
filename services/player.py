@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 import discord
 
 from services.extractor import YTDLSource
+from services.music.backends import create_backend
+from services.music import lavalink
 from services.music.playback import AudioFilter, PlaybackState, coerce_filter, ffmpeg_filter_options
 from services.music.queue import MusicQueue
 
@@ -63,6 +65,7 @@ class MusicPlayer:
             'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
             'options': ffmpeg_filter_options(self.active_filter),
         }
+        self.backend = create_backend()
 
         self.task: asyncio.Task = asyncio.create_task(self.player_loop())
 
@@ -103,25 +106,28 @@ class MusicPlayer:
                     except Exception as e:
                         logger.warning("Failed to refresh stream URL: %s", e)
 
-            # Build FFmpeg before_options with optional seek
-            before = '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
             if self._seek_offset > 0:
-                before = f'-ss {self._seek_offset:.1f} {before}'
+                start_seconds = self._seek_offset
                 self._start_offset = self._seek_offset
                 self._seek_offset = 0.0
             else:
+                start_seconds = 0.0
                 self._start_offset = 0.0
 
             try:
                 self.state = PlaybackState.RESOLVING
-                source = discord.PCMVolumeTransformer(
-                    discord.FFmpegPCMAudio(
-                        self.current['url'],
-                        before_options=before,
-                        options=self.ffmpeg_options['options'],
-                    ),
-                    volume=self.volume,
-                )
+                if self.backend.name == "lavalink" and not lavalink.is_lavalink_active():
+                    self.state = PlaybackState.RECOVERING
+                    if self.current:
+                        self.queue.appendleft(self.current)
+                        self._queue_ready.set()
+                    self.current = None
+                    await asyncio.sleep(5)
+                    continue
+                source = await self.backend.play(self, self.current, start_seconds=start_seconds)
+                if source is None:
+                    self.current = None
+                    continue
 
                 # Reset playback timer
                 self._play_start = time.monotonic()
@@ -132,12 +138,6 @@ class MusicPlayer:
                     self.current = None
                     continue
 
-                # NOTE: bot.loop.call_soon_threadsafe is correct here —
-                # this lambda runs on FFmpeg's thread, not the async loop
-                voice_client.play(
-                    source,
-                    after=lambda _: self.bot.loop.call_soon_threadsafe(self.next.set),
-                )
                 self.state = PlaybackState.PLAYING
 
                 # Send the now-playing panel (skip on filter restart — same song)
@@ -166,7 +166,7 @@ class MusicPlayer:
                 self._is_filter_restart = False
                 self._filter_restart_pending = False
             finally:
-                if source:
+                if source and hasattr(source, "cleanup"):
                     source.cleanup()
                 self.current = None
                 if not self._closed and self.state is PlaybackState.FAILED:
@@ -203,11 +203,7 @@ class MusicPlayer:
 
         voice_client = self.guild.voice_client
         if voice_client:
-            if voice_client.is_playing() or voice_client.is_paused():
-                voice_client.stop()
-            if voice_client.source:
-                voice_client.source.cleanup()
-            await voice_client.disconnect()
+            await self.backend.disconnect(self)
 
         if self.task is not asyncio.current_task():
             self.task.cancel()
@@ -215,34 +211,26 @@ class MusicPlayer:
                 await self.task
 
     def skip(self) -> None:
-        if self.guild.voice_client and (
-            self.guild.voice_client.is_playing() or self.guild.voice_client.is_paused()
-        ):
-            self.guild.voice_client.stop()
+        self._schedule_backend(self.backend.stop(self))
 
     def stop(self) -> None:
         self.queue.clear()
         self.repeat = False
         self._is_filter_restart = False
         self._filter_restart_pending = False
-        if self.guild.voice_client and (
-            self.guild.voice_client.is_playing() or self.guild.voice_client.is_paused()
-        ):
-            self.guild.voice_client.stop()
+        self._schedule_backend(self.backend.stop(self))
 
     def pause(self) -> None:
-        if self.guild.voice_client and self.guild.voice_client.is_playing():
-            # Save elapsed time before pausing
+        if self.guild.voice_client and self._voice_is_playing():
             self._elapsed_before_pause += time.monotonic() - self._play_start
-            self.guild.voice_client.pause()
+            self._schedule_backend(self.backend.pause(self))
             self.paused = True
             self.state = PlaybackState.PAUSED
 
     def resume(self) -> None:
-        if self.guild.voice_client and self.guild.voice_client.is_paused():
-            # Reset play start for the new segment
+        if self.guild.voice_client and self._voice_is_paused():
             self._play_start = time.monotonic()
-            self.guild.voice_client.resume()
+            self._schedule_backend(self.backend.resume(self))
             self.paused = False
             self.state = PlaybackState.PLAYING
 
@@ -251,10 +239,7 @@ class MusicPlayer:
 
     def set_volume(self, vol: float) -> None:
         self.volume = vol
-        # Update live source if playing
-        vc = self.guild.voice_client
-        if vc and vc.source and isinstance(vc.source, discord.PCMVolumeTransformer):
-            vc.source.volume = vol
+        self._schedule_backend(self.backend.set_volume(self, vol))
 
     def toggle_repeat(self) -> bool:
         self.repeat = not self.repeat
@@ -265,9 +250,11 @@ class MusicPlayer:
         self.active_filter = coerce_filter(filter_name)
         self.ffmpeg_options['options'] = ffmpeg_filter_options(self.active_filter)
 
-        # Restart the current track at current position so the filter applies immediately
         vc = self.guild.voice_client
-        if vc and (vc.is_playing() or vc.is_paused()) and self.current:
+        if vc and (self._voice_is_playing() or self._voice_is_paused()) and self.current:
+            if self.backend.name == "lavalink":
+                self._schedule_backend(self.backend.set_filter(self, self.active_filter))
+                return
             if self._filter_restart_pending:
                 return
             # Calculate how far into the song we are
@@ -282,6 +269,32 @@ class MusicPlayer:
             self.queue.appendleft(self.current)
             self._queue_ready.set()
             vc.stop()  # triggers after -> next.set() -> player_loop replays at seek offset
+
+    def _voice_is_playing(self) -> bool:
+        vc = self.guild.voice_client
+        attr = getattr(vc, "is_playing", None)
+        if callable(attr):
+            return bool(attr())
+        return bool(getattr(vc, "playing", False))
+
+    def _voice_is_paused(self) -> bool:
+        vc = self.guild.voice_client
+        attr = getattr(vc, "is_paused", None)
+        if callable(attr):
+            return bool(attr())
+        return bool(getattr(vc, "paused", False))
+
+    def _schedule_backend(self, coro) -> None:
+        task = asyncio.create_task(coro)
+
+        def _log_failure(done: asyncio.Task) -> None:
+            if done.cancelled():
+                return
+            exc = done.exception()
+            if exc:
+                logger.warning("Audio backend operation failed: %s", exc)
+
+        task.add_done_callback(_log_failure)
 
 
 class PlayerManager:
@@ -304,6 +317,14 @@ class PlayerManager:
                 cog=cog,
             )
         return self.players[guild_id]
+
+    async def connect_to_voice(self, channel) -> None:
+        if lavalink.strict_lavalink_unavailable():
+            raise RuntimeError("MUSIC_BACKEND=lavalink but no Lavalink node is connected.")
+        if lavalink.is_lavalink_active():
+            await channel.connect(cls=lavalink.player_cls(), self_deaf=True)
+        else:
+            await channel.connect()
 
     def get_existing_player(self, guild_id: int) -> MusicPlayer | None:
         return self.players.get(guild_id)

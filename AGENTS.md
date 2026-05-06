@@ -35,6 +35,7 @@ npm run build
 - Keep Discord command startup sync behavior intact unless the user explicitly asks to change it.
 - Keep `DASHBOARD_BIND` defaulting to `0.0.0.0` unless the user explicitly asks to change it.
 - Keep dashboard reversible password storage and `password_display` behavior unless the user explicitly asks to remove it.
+- Keep Lavalink as the default `MUSIC_BACKEND`; FFmpeg must remain available as a manual fallback.
 - Do not introduce broad refactors when a small service-level fix is enough.
 - Prefer `unittest` for Python tests unless the project intentionally adopts another test framework.
 - Avoid live Discord, Spotify, YouTube, SoundCloud, or Genius calls in tests; mock network-facing boundaries.
@@ -46,12 +47,14 @@ npm run build
 - New music code should prefer the domain layer in `services/music/`:
   - `queue.py` for queue data structures and saved queue serialization
   - `playback.py` for playback state and audio filter registry
+  - `backends.py` and `lavalink.py` for audio backend selection and optional Lavalink integration
   - `policies.py` for DJ/admin/requester control checks
   - `ui.py` for player panel/component helpers
   - `session.py` for higher-level session facades
 - `DashboardServer` shares the bot database connection and should not create a separate SQLite connection.
 - The dashboard trusts forwarded IP headers only when `TRUSTED_PROXY_IPS` is configured.
 - `yt-dlp` and Genius calls run in dedicated thread pools and have shutdown hooks called from `MusicBot.shutdown_resources()`.
+- Lavalink connection retries can continue in `MusicBot.lavalink_task`; shutdown must cancel it before closing the Wavelink pool.
 
 ## Useful Commands
 
