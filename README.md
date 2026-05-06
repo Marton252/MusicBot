@@ -1,8 +1,8 @@
 # 🎵 Discord Music Bot
 
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://python.org)
-[![License](https://img.shields.io/github/license/Marton252/MusicBot?color=blue)](LICENSE)
-[![CI](https://img.shields.io/github/actions/workflow/status/Marton252/MusicBot/ci.yml?label=CI&logo=github)](https://github.com/Marton252/MusicBot/actions)
+[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](https://python.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/Marton252/MusicBot/actions/workflows/ci.yml/badge.svg)](https://github.com/Marton252/MusicBot/actions/workflows/ci.yml)
 [![CodeQL](https://img.shields.io/badge/CodeQL-Enabled-brightgreen?logo=github)](https://github.com/Marton252/MusicBot/security/code-scanning)
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?logo=docker&logoColor=white)](https://ghcr.io/marton252/musicbot)
 
@@ -34,7 +34,7 @@ A feature-rich, multi-server Discord music bot with real-time audio streaming, i
 
 | Tool    | Version                  |
 | ------- | ------------------------ |
-| Python  | 3.11+                    |
+| Python  | 3.12+                    |
 | Node.js | 18+ (for dashboard)      |
 | FFmpeg  | Latest (must be on PATH) |
 
