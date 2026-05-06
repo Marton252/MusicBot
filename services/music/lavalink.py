@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
 from config import (
     LAVALINK_CONNECT_RETRIES,
@@ -151,6 +152,12 @@ def _track_source_name(track: Any) -> str:
     return str(getattr(source, "name", source) or "Lavalink")
 
 
+def _is_spotify_url(query: str) -> bool:
+    parsed = urlparse(query)
+    host = (parsed.hostname or "").lower()
+    return host == "open.spotify.com" and bool(parsed.path and parsed.path != "/")
+
+
 def playable_to_track(track: Any, *, requester_id: int | None = None) -> dict:
     length_ms = int(getattr(track, "length", 0) or 0)
     return {
@@ -192,7 +199,7 @@ async def resolve_track(query: str, *, requester_id: int | None = None) -> dict 
 
     # Spotify URLs are still resolved through the existing Spotify metadata path,
     # then loaded by stable webpage URL/search result in Lavalink at playback time.
-    if "open.spotify.com/" in query:
+    if _is_spotify_url(query):
         fallback = await YTDLSource.extract_info(query)
         if fallback:
             query = fallback.get("webpage_url") or fallback.get("title") or query
