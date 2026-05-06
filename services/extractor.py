@@ -3,7 +3,9 @@ import concurrent.futures
 import logging
 import re
 import threading
+import time
 from difflib import SequenceMatcher
+from urllib.parse import urlparse
 
 import spotipy
 import yt_dlp
@@ -23,6 +25,8 @@ logger = logging.getLogger('MusicBot.Extractor')
 _ytdl_executor = concurrent.futures.ThreadPoolExecutor(
     max_workers=4, thread_name_prefix="ytdl"
 )
+_CACHE_TTL_SECONDS = 300
+_info_cache: dict[str, tuple[float, dict]] = {}
 
 sp: spotipy.Spotify | None = None
 if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
@@ -251,6 +255,26 @@ def _detect_platform(track: dict) -> str:
     return _detect_url_platform(url)
 
 
+def _cache_get(key: str) -> dict | None:
+    item = _info_cache.get(key)
+    if not item:
+        return None
+    expires_at, value = item
+    if expires_at <= time.monotonic():
+        _info_cache.pop(key, None)
+        return None
+    return value.copy()
+
+
+def _cache_set(key: str, value: dict | None) -> None:
+    if value:
+        _info_cache[key] = (time.monotonic() + _CACHE_TTL_SECONDS, value.copy())
+
+
+def shutdown_ytdl_executor() -> None:
+    _ytdl_executor.shutdown(wait=False, cancel_futures=True)
+
+
 # ────────────────────────────────────────────────────────────────────────────────
 # YTDLSource — main extractor
 # ────────────────────────────────────────────────────────────────────────────────
@@ -364,7 +388,8 @@ class YTDLSource:
                 lambda: cls._get_ytdl().extract_info(url, download=False),
             )
         except Exception as e:
-            logger.error("Failed to extract URL (%s): %s", url, e)
+            host = urlparse(url).netloc or "unknown-host"
+            logger.error("Failed to extract URL from %s: %s", host, e)
             return None
 
         if not data:
@@ -397,6 +422,11 @@ class YTDLSource:
         - Plain text → multi-platform parallel search (YT + SC)
         """
 
+        cache_key = query.strip().lower()
+        cached = _cache_get(cache_key)
+        if cached:
+            return cached
+
         # ── Spotify track link ────────────────────────────────────────
         m = _RE_SPOTIFY_TRACK.search(query)
         if m:
@@ -408,16 +438,23 @@ class YTDLSource:
                     # Prefer Spotify thumbnail if the search result lacks one
                     if meta.get('thumbnail') and not result.get('thumbnail'):
                         result['thumbnail'] = meta['thumbnail']
+                    _cache_set(cache_key, result)
                     return result
             # Fallback: try as raw text search
-            return await cls._multi_search(query)
+            result = await cls._multi_search(query)
+            _cache_set(cache_key, result)
+            return result
 
         # ── Direct URL (YouTube, SoundCloud, etc.) ────────────────────
         if query.startswith(('http://', 'https://')):
-            return await cls._extract_url(query)
+            result = await cls._extract_url(query)
+            _cache_set(cache_key, result)
+            return result
 
         # ── Plain text search → multi-platform ────────────────────────
-        return await cls._multi_search(query)
+        result = await cls._multi_search(query)
+        _cache_set(cache_key, result)
+        return result
 
     # ── Public API: playlist / album ──────────────────────────────────────
 

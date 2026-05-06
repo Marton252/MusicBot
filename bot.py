@@ -10,6 +10,7 @@ Ctrl+C is forwarded to the child and kills everything cleanly.
 """
 
 import asyncio
+import contextlib
 import logging
 import os
 import signal
@@ -56,6 +57,7 @@ class MusicBot(commands.AutoShardedBot):
         )
         self.embed_color: int = get_embed_color()
         self.db = shared_db
+        self.dashboard_task: asyncio.Task | None = None
         from datetime import datetime, UTC
         self.start_time = datetime.now(UTC)
 
@@ -107,7 +109,19 @@ class MusicBot(commands.AutoShardedBot):
                 self, DASHBOARD_PORT, DASHBOARD_ADMIN_USER, DASHBOARD_ADMIN_PASSWORD,
                 SSL_CERT_PATH, SSL_KEY_PATH, DASHBOARD_BIND,
             )
-            asyncio.create_task(dash.start())
+            self.dashboard_task = asyncio.create_task(dash.start())
+
+            def _log_dashboard_failure(task: asyncio.Task) -> None:
+                if task.cancelled():
+                    return
+                exc = task.exception()
+                if exc:
+                    logger.error(
+                        "Web Dashboard task stopped unexpectedly.",
+                        exc_info=(type(exc), exc, exc.__traceback__),
+                    )
+
+            self.dashboard_task.add_done_callback(_log_dashboard_failure)
         else:
             logger.warning("Web Dashboard DISABLED — set a strong DASHBOARD_ADMIN_PASSWORD in .env to enable it.")
 
@@ -171,9 +185,32 @@ class MusicBot(commands.AutoShardedBot):
         except Exception as e:
             logger.error("Failed to sync commands to guild %s: %s", guild.id, e)
 
+    async def shutdown_resources(self, *, cancel_dashboard: bool = True) -> None:
+        """Release resources owned by services before process shutdown."""
+        if cancel_dashboard and self.dashboard_task and not self.dashboard_task.done():
+            self.dashboard_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self.dashboard_task
+
+        from services.player import manager
+        for player in list(manager.players.values()):
+            await manager.cleanup(player.guild)
+        for vc in list(self.voice_clients):
+            with contextlib.suppress(Exception):
+                if vc.source:
+                    vc.source.cleanup()
+                await vc.disconnect()
+
+        from services.extractor import shutdown_ytdl_executor
+        from services.lyrics import shutdown_lyrics_executor
+        shutdown_ytdl_executor()
+        shutdown_lyrics_executor()
+
+        await self.db.close()
+
     async def close(self) -> None:
         """Clean shutdown: close DB, then call super."""
-        await self.db.close()
+        await self.shutdown_resources()
         await super().close()
 
 

@@ -3,6 +3,7 @@ import base64
 import datetime
 import hashlib
 import hmac
+import ipaddress
 import logging
 import os
 import re
@@ -95,6 +96,11 @@ class RateLimiter:
             self._lockout_count[key] = count
             lockout_secs = min(self.base_window * (2 ** (count - 1)), self.max_window)
             self._lockout_until[key] = now + lockout_secs
+
+    def reset(self, key: str) -> None:
+        self._attempts.pop(key, None)
+        self._lockout_until.pop(key, None)
+        self._lockout_count.pop(key, None)
 
 
 # ─── HMAC-Signed Session Cookie (with user identity) ────────────────────────────
@@ -219,10 +225,19 @@ class DashboardServer:
         self.app.config['MAX_CONTENT_LENGTH'] = 16 * 1024  # 16 KB — enough for login/user JSON
 
         # Use dedicated secret key for cookie signing (not the admin password)
-        from config import DASHBOARD_SECRET_KEY
+        from config import DASHBOARD_SECRET_KEY, TRUSTED_PROXY_IPS
         self.signer = CookieSigner(secret=DASHBOARD_SECRET_KEY)
         self.fernet = _make_fernet(DASHBOARD_SECRET_KEY)
         self.login_limiter = RateLimiter(max_attempts=3, window_seconds=300)
+        self.trusted_proxy_networks = []
+        for raw_proxy in TRUSTED_PROXY_IPS:
+            try:
+                self.trusted_proxy_networks.append(ipaddress.ip_network(raw_proxy, strict=False))
+            except ValueError:
+                logging.getLogger('MusicBot.Dashboard').warning(
+                    "Ignoring invalid trusted proxy entry: %s", raw_proxy,
+                )
+        self._cookie_secure = True
 
         self.start_time = datetime.datetime.now(datetime.UTC)
         self._process = psutil.Process(os.getpid())
@@ -232,6 +247,7 @@ class DashboardServer:
 
         # Server-side stats history — survives page refresh / logout
         self._stats_history: deque[tuple[float, float, int]] = deque(maxlen=86400)
+        self._last_history_sample_time: float = 0.0
 
         # Stats cache (avoid redundant syscalls when multiple WS clients connected)
         self._stats_cache: dict | None = None
@@ -266,13 +282,29 @@ class DashboardServer:
         self._stats_cache_time = now
         return self._stats_cache
 
+    def _remote_addr_is_trusted_proxy(self) -> bool:
+        if not self.trusted_proxy_networks:
+            return False
+        remote = request.remote_addr
+        if not remote:
+            return False
+        try:
+            remote_ip = ipaddress.ip_address(remote)
+        except ValueError:
+            return False
+        return any(remote_ip in network for network in self.trusted_proxy_networks)
+
     def _get_client_ip(self) -> str:
         """Return the real client IP, respecting X-Forwarded-For behind a proxy."""
-        forwarded = request.headers.get('X-Forwarded-For', '')
-        if forwarded:
-            # X-Forwarded-For: client, proxy1, proxy2 — take the first
-            return forwarded.split(',')[0].strip()
-        return request.headers.get('CF-Connecting-IP', '') or request.remote_addr or 'unknown'
+        if self._remote_addr_is_trusted_proxy():
+            forwarded = request.headers.get('X-Forwarded-For', '')
+            if forwarded:
+                # X-Forwarded-For: client, proxy1, proxy2 — take the first
+                return forwarded.split(',')[0].strip()
+            cf_ip = request.headers.get('CF-Connecting-IP', '')
+            if cf_ip:
+                return cf_ip
+        return request.remote_addr or 'unknown'
 
     def setup_routes(self) -> None:
         @self.app.after_request
@@ -308,7 +340,7 @@ class DashboardServer:
                         return jsonify({'error': 'CSRF check failed'}), 403
 
             # --- Auth: skip for unprotected paths ---
-            unprotected_paths = ['/', '/api/login', '/favicon.ico']
+            unprotected_paths = ['/', '/api/login', '/healthz', '/favicon.ico']
             if request.path in unprotected_paths or request.path.startswith('/assets/'):
                 return
 
@@ -345,6 +377,10 @@ class DashboardServer:
             except FileNotFoundError:
                 return "Dashboard UI not found. Did you run 'npm run build' inside dash-ui?", 404
 
+        @self.app.route('/healthz')
+        async def healthz():
+            return jsonify({'status': 'ok'})
+
         @self.app.route('/assets/<path:filename>')
         async def handle_assets(filename):
             try:
@@ -366,18 +402,20 @@ class DashboardServer:
             except Exception:
                 return jsonify({'error': 'Invalid request body'}), 400
 
-            self.login_limiter.record_attempt(client_ip)
-
             username = (data or {}).get('username', '').strip()
             password = (data or {}).get('password', '')
 
             if not username or not password:
+                self.login_limiter.record_attempt(client_ip)
                 return jsonify({'error': 'Username and password are required.'}), 401
 
             # Look up user in DB
             db_user = await self.bot.db.get_dashboard_user(username)
             if not db_user or not _check_password(password, db_user['password_hash']):
+                self.login_limiter.record_attempt(client_ip)
                 return jsonify({'error': 'Invalid username or password.'}), 401
+
+            self.login_limiter.reset(client_ip)
 
             # Create signed token with user permissions
             token = self.signer.create_token(
@@ -398,7 +436,7 @@ class DashboardServer:
                 token,
                 max_age=2592000,
                 httponly=True,
-                secure=True,
+                secure=self._cookie_secure,
                 samesite='Strict',
             )
             return resp
@@ -575,12 +613,15 @@ class DashboardServer:
 
                     stats = self._get_stats()
 
-                    # Accumulate server-side history
-                    self._stats_history.append((
-                        stats['cpu_usage'],
-                        stats['ram_usage_mb'],
-                        stats['ping'],
-                    ))
+                    # Accumulate server-side history once per second, even with multiple WS clients.
+                    now = time.monotonic()
+                    if now - self._last_history_sample_time >= 1.0:
+                        self._stats_history.append((
+                            stats['cpu_usage'],
+                            stats['ram_usage_mb'],
+                            stats['ping'],
+                        ))
+                        self._last_history_sample_time = now
 
                     payload: dict = {
                         'type': 'update',
@@ -628,17 +669,10 @@ class DashboardServer:
         dash_logger = logging.getLogger('MusicBot.Dashboard')
         dash_logger.info("Dashboard triggered bot restart...")
 
-        # Close DB (the only state that needs flushing)
-        await self.bot.db.close()
-
-        # Disconnect voice clients and cleanup FFmpeg sources
-        for vc in list(self.bot.voice_clients):
-            try:
-                if vc.source:
-                    vc.source.cleanup()
-                await vc.disconnect()
-            except Exception:
-                pass
+        if hasattr(self.bot, "shutdown_resources"):
+            await self.bot.shutdown_resources(cancel_dashboard=False)
+        else:
+            await self.bot.close()
 
         # Exit with code 42 — the launcher sees this and respawns
         os._exit(42)
@@ -670,11 +704,15 @@ class DashboardServer:
         if os.path.exists(self.cert_path) and os.path.exists(self.key_path):
             config.certfile = self.cert_path
             config.keyfile = self.key_path
+            self._cookie_secure = True
             dash_logger.info(
                 "Secure Dashboard running on https://%s:%s with HTTP/2 support",
                 self.bind, self.port,
             )
         else:
+            if self.bind not in {"127.0.0.1", "localhost", "::1"}:
+                raise RuntimeError("Dashboard TLS is required when binding to a non-local interface.")
+            self._cookie_secure = False
             dash_logger.warning(
                 "SSL certs not found and auto-generation failed! "
                 "Run generate_cert.py manually or provide cert/key paths."

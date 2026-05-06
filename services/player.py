@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
-import random
 import time
-from collections import deque
 from typing import TYPE_CHECKING
 
 import discord
 
 from services.extractor import YTDLSource
+from services.music.playback import AudioFilter, PlaybackState, coerce_filter, ffmpeg_filter_options
+from services.music.queue import MusicQueue
 
 from config import MAX_QUEUE_SIZE
 
@@ -34,7 +35,7 @@ class MusicPlayer:
         self.channel = channel
         self.cog = cog
 
-        self.queue: deque[dict] = deque()
+        self.queue = MusicQueue(MAX_QUEUE_SIZE)
         self.next: asyncio.Event = asyncio.Event()
 
         # Event to signal queue availability (replaces spin-loop)
@@ -44,7 +45,9 @@ class MusicPlayer:
         self.volume: float = 1.0
         self.paused: bool = False
         self.repeat: bool = False
-        self.active_filter: str = "none"
+        self.active_filter: AudioFilter = AudioFilter.NONE
+        self.state: PlaybackState = PlaybackState.IDLE
+        self.last_error: str | None = None
         self.np_message: discord.Message | None = None
 
         # Playback time tracking (for seeking on filter change)
@@ -52,27 +55,34 @@ class MusicPlayer:
         self._elapsed_before_pause: float = 0.0  # accumulated play time before last pause
         self._seek_offset: float = 0.0          # seconds to seek into next track
         self._is_filter_restart: bool = False   # suppress NP panel on filter restart
+        self._filter_restart_pending: bool = False
         self._start_offset: float = 0.0         # cumulative start base (kept across filter restarts)
+        self._closed: bool = False
 
         self.ffmpeg_options: dict[str, str] = {
             'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-            'options': '-vn',
+            'options': ffmpeg_filter_options(self.active_filter),
         }
 
-        asyncio.create_task(self.player_loop())
+        self.task: asyncio.Task = asyncio.create_task(self.player_loop())
 
     async def player_loop(self) -> None:
         await self.bot.wait_until_ready()
 
-        while not self.bot.is_closed():
+        while not self.bot.is_closed() and not self._closed:
             self.next.clear()
             self.paused = False
+            source: discord.PCMVolumeTransformer | None = None
 
             try:
                 # Wait for the next song with a 5-minute inactivity timeout
+                self.state = PlaybackState.IDLE
                 self.current = await asyncio.wait_for(self._queue_get(), timeout=300)
             except asyncio.TimeoutError:
-                return self.destroy(self.guild)
+                await self.destroy(self.guild)
+                return
+            except asyncio.CancelledError:
+                return
 
             if not self.guild.voice_client:
                 self.current = None
@@ -81,6 +91,7 @@ class MusicPlayer:
             # For filter restarts on non-YouTube platforms, re-extract a
             # fresh stream URL because SoundCloud (and others) expire fast.
             if self._is_filter_restart and self.current:
+                self.state = PlaybackState.RECOVERING
                 webpage = self.current.get('webpage_url', '')
                 is_yt = any(d in webpage for d in ('youtube.com', 'youtu.be'))
                 if webpage and not is_yt:
@@ -101,46 +112,65 @@ class MusicPlayer:
             else:
                 self._start_offset = 0.0
 
-            source = discord.PCMVolumeTransformer(
-                discord.FFmpegPCMAudio(
-                    self.current['url'],
-                    before_options=before,
-                    options=self.ffmpeg_options['options'],
-                ),
-                volume=self.volume,
-            )
+            try:
+                self.state = PlaybackState.RESOLVING
+                source = discord.PCMVolumeTransformer(
+                    discord.FFmpegPCMAudio(
+                        self.current['url'],
+                        before_options=before,
+                        options=self.ffmpeg_options['options'],
+                    ),
+                    volume=self.volume,
+                )
 
-            # Reset playback timer
-            self._play_start = time.monotonic()
-            self._elapsed_before_pause = 0.0
+                # Reset playback timer
+                self._play_start = time.monotonic()
+                self._elapsed_before_pause = 0.0
 
-            # NOTE: bot.loop.call_soon_threadsafe is correct here —
-            # this lambda runs on FFmpeg's thread, not the async loop
-            self.guild.voice_client.play(
-                source,
-                after=lambda _: self.bot.loop.call_soon_threadsafe(self.next.set),
-            )
+                voice_client = self.guild.voice_client
+                if not voice_client:
+                    self.current = None
+                    continue
 
-            # Send the now-playing panel (skip on filter restart — same song)
-            if self._is_filter_restart:
+                # NOTE: bot.loop.call_soon_threadsafe is correct here —
+                # this lambda runs on FFmpeg's thread, not the async loop
+                voice_client.play(
+                    source,
+                    after=lambda _: self.bot.loop.call_soon_threadsafe(self.next.set),
+                )
+                self.state = PlaybackState.PLAYING
+
+                # Send the now-playing panel (skip on filter restart — same song)
+                if self._is_filter_restart:
+                    self._is_filter_restart = False
+                    self._filter_restart_pending = False
+                else:
+                    try:
+                        await self.cog.send_np_panel(self)
+                    except Exception as e:
+                        logger.error("Failed to send NP panel: %s", e)
+
+                await self.next.wait()
+
+                # If repeat is on, re-enqueue the current track at the front
+                if self.repeat and self.current and not self._closed:
+                    self.queue.appendleft(self.current)
+                    self._queue_ready.set()
+
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                self.state = PlaybackState.FAILED
+                self.last_error = str(e)
+                logger.error("Playback failed in guild %s: %s", self.guild.id, e)
                 self._is_filter_restart = False
-            else:
-                try:
-                    await self.cog.send_np_panel(self)
-                except Exception as e:
-                    logger.error("Failed to send NP panel: %s", e)
-
-            await self.next.wait()
-
-            # PCMVolumeTransformer always has cleanup() in discord.py 2.x
-            source.cleanup()
-
-            # If repeat is on, re-enqueue the current track at the front
-            if self.repeat and self.current:
-                self.queue.appendleft(self.current)
-                self._queue_ready.set()
-
-            self.current = None
+                self._filter_restart_pending = False
+            finally:
+                if source:
+                    source.cleanup()
+                self.current = None
+                if not self._closed and self.state is PlaybackState.FAILED:
+                    self.state = PlaybackState.IDLE
 
     async def _queue_get(self) -> dict:
         """Wait efficiently for the next queue item (no busy-wait)."""
@@ -153,12 +183,36 @@ class MusicPlayer:
         """Add an item to the queue. Returns False if queue is full."""
         if len(self.queue) >= MAX_QUEUE_SIZE:
             return False
-        self.queue.append(item)
+        if not self.queue.add(item):
+            return False
         self._queue_ready.set()
         return True
 
-    def destroy(self, guild: discord.Guild) -> asyncio.Task:
-        return asyncio.create_task(self.cog.cleanup(guild))
+    async def destroy(self, guild: discord.Guild) -> None:
+        await self.cog.cleanup(guild)
+
+    async def close(self) -> None:
+        """Stop playback, disconnect voice, and stop the background loop."""
+        self._closed = True
+        self.queue.clear()
+        self.repeat = False
+        self._is_filter_restart = False
+        self._filter_restart_pending = False
+        self._queue_ready.set()
+        self.next.set()
+
+        voice_client = self.guild.voice_client
+        if voice_client:
+            if voice_client.is_playing() or voice_client.is_paused():
+                voice_client.stop()
+            if voice_client.source:
+                voice_client.source.cleanup()
+            await voice_client.disconnect()
+
+        if self.task is not asyncio.current_task():
+            self.task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self.task
 
     def skip(self) -> None:
         if self.guild.voice_client and (
@@ -169,6 +223,8 @@ class MusicPlayer:
     def stop(self) -> None:
         self.queue.clear()
         self.repeat = False
+        self._is_filter_restart = False
+        self._filter_restart_pending = False
         if self.guild.voice_client and (
             self.guild.voice_client.is_playing() or self.guild.voice_client.is_paused()
         ):
@@ -180,6 +236,7 @@ class MusicPlayer:
             self._elapsed_before_pause += time.monotonic() - self._play_start
             self.guild.voice_client.pause()
             self.paused = True
+            self.state = PlaybackState.PAUSED
 
     def resume(self) -> None:
         if self.guild.voice_client and self.guild.voice_client.is_paused():
@@ -187,11 +244,10 @@ class MusicPlayer:
             self._play_start = time.monotonic()
             self.guild.voice_client.resume()
             self.paused = False
+            self.state = PlaybackState.PLAYING
 
     def shuffle(self) -> None:
-        items = list(self.queue)
-        random.shuffle(items)
-        self.queue = deque(items)
+        self.queue.shuffle()
 
     def set_volume(self, vol: float) -> None:
         self.volume = vol
@@ -204,23 +260,16 @@ class MusicPlayer:
         self.repeat = not self.repeat
         return self.repeat
 
-    def set_filter(self, filter_name: str) -> None:
+    def set_filter(self, filter_name: str | AudioFilter) -> None:
         """Apply an audio filter. If a track is playing, restart at the current position."""
-        filters = {
-            "bassboost": "bass=g=20",
-            "nightcore": "aresample=48000,asetrate=48000*1.25",
-            "vaporwave": "aresample=48000,asetrate=48000*0.8",
-        }
-        self.active_filter = filter_name if filter_name in filters else "none"
-
-        if filter_name in filters:
-            self.ffmpeg_options['options'] = f'-vn -af {filters[filter_name]}'
-        else:
-            self.ffmpeg_options['options'] = '-vn'
+        self.active_filter = coerce_filter(filter_name)
+        self.ffmpeg_options['options'] = ffmpeg_filter_options(self.active_filter)
 
         # Restart the current track at current position so the filter applies immediately
         vc = self.guild.voice_client
         if vc and (vc.is_playing() or vc.is_paused()) and self.current:
+            if self._filter_restart_pending:
+                return
             # Calculate how far into the song we are
             if self.paused:
                 elapsed = self._start_offset + self._elapsed_before_pause
@@ -229,6 +278,7 @@ class MusicPlayer:
 
             self._seek_offset = elapsed
             self._is_filter_restart = True
+            self._filter_restart_pending = True
             self.queue.appendleft(self.current)
             self._queue_ready.set()
             vc.stop()  # triggers after -> next.set() -> player_loop replays at seek offset
@@ -259,8 +309,10 @@ class PlayerManager:
         return self.players.get(guild_id)
 
     async def cleanup(self, guild: discord.Guild) -> None:
-        self.players.pop(guild.id, None)
-        if guild.voice_client:
+        player = self.players.pop(guild.id, None)
+        if player:
+            await player.close()
+        elif guild.voice_client:
             await guild.voice_client.disconnect()
 
 

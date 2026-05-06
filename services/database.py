@@ -37,6 +37,28 @@ class Database:
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
         ''')
+        await self._conn.execute('''
+            CREATE TABLE IF NOT EXISTS saved_queues (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                name TEXT NOT NULL COLLATE NOCASE,
+                created_by INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(guild_id, name)
+            )
+        ''')
+        await self._conn.execute('''
+            CREATE TABLE IF NOT EXISTS saved_queue_items (
+                queue_id INTEGER NOT NULL,
+                position INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                webpage_url TEXT NOT NULL,
+                duration INTEGER NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'Unknown',
+                PRIMARY KEY(queue_id, position),
+                FOREIGN KEY(queue_id) REFERENCES saved_queues(id) ON DELETE CASCADE
+            )
+        ''')
         await self._conn.commit()
         logger.info("Database initialized with persistent connection.")
 
@@ -203,6 +225,104 @@ class Database:
         )
         await conn.commit()
         return cursor.rowcount > 0
+
+    # ─── Saved Music Queues ─────────────────────────────────────────────────────
+
+    async def save_music_queue(
+        self,
+        guild_id: int,
+        name: str,
+        created_by: int,
+        items: list[dict],
+    ) -> int:
+        """Create or replace a saved queue. Returns the saved queue id."""
+        conn = await self._get_conn()
+        await conn.execute("PRAGMA foreign_keys = ON")
+        await conn.execute(
+            '''
+            INSERT INTO saved_queues (guild_id, name, created_by)
+            VALUES (?, ?, ?)
+            ON CONFLICT(guild_id, name) DO UPDATE SET
+                created_by=excluded.created_by,
+                created_at=datetime('now')
+            ''',
+            (guild_id, name, created_by),
+        )
+        async with conn.execute(
+            'SELECT id FROM saved_queues WHERE guild_id = ? AND name = ?',
+            (guild_id, name),
+        ) as lookup:
+            row = await lookup.fetchone()
+            queue_id = row[0]
+
+        await conn.execute('DELETE FROM saved_queue_items WHERE queue_id = ?', (queue_id,))
+        await conn.executemany(
+            '''
+            INSERT INTO saved_queue_items (queue_id, position, title, webpage_url, duration, source)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ''',
+            [
+                (
+                    queue_id,
+                    item['position'],
+                    item['title'],
+                    item['webpage_url'],
+                    item.get('duration', 0),
+                    item.get('source', 'Unknown'),
+                )
+                for item in items
+            ],
+        )
+        await conn.commit()
+        return queue_id
+
+    async def list_saved_music_queues(self, guild_id: int) -> list[dict]:
+        conn = await self._get_conn()
+        async with conn.execute(
+            '''
+            SELECT q.id, q.name, q.created_by, q.created_at, COUNT(i.position) AS item_count
+            FROM saved_queues q
+            LEFT JOIN saved_queue_items i ON i.queue_id = q.id
+            WHERE q.guild_id = ?
+            GROUP BY q.id
+            ORDER BY q.name COLLATE NOCASE
+            ''',
+            (guild_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [
+                {
+                    'id': row[0],
+                    'name': row[1],
+                    'created_by': row[2],
+                    'created_at': row[3],
+                    'item_count': row[4],
+                }
+                for row in rows
+            ]
+
+    async def load_saved_music_queue(self, guild_id: int, name: str) -> list[dict]:
+        conn = await self._get_conn()
+        async with conn.execute(
+            '''
+            SELECT i.title, i.webpage_url, i.duration, i.source
+            FROM saved_queues q
+            JOIN saved_queue_items i ON i.queue_id = q.id
+            WHERE q.guild_id = ? AND q.name = ?
+            ORDER BY i.position
+            ''',
+            (guild_id, name),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [
+                {
+                    'title': row[0],
+                    'webpage_url': row[1],
+                    'duration': row[2],
+                    'source': row[3],
+                }
+                for row in rows
+            ]
 
 
 # Shared module-level instance — bot.py assigns bot.db = db so

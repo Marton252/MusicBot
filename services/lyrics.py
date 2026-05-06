@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import logging
+import time
 
 import lyricsgenius
 
@@ -13,6 +14,12 @@ logger = logging.getLogger('MusicBot.Lyrics')
 _lyrics_executor = concurrent.futures.ThreadPoolExecutor(
     max_workers=2, thread_name_prefix="lyrics"
 )
+_CACHE_TTL_SECONDS = 600
+_lyrics_cache: dict[str, tuple[float, str]] = {}
+
+
+def shutdown_lyrics_executor() -> None:
+    _lyrics_executor.shutdown(wait=False, cancel_futures=True)
 
 
 class LyricsService:
@@ -42,9 +49,20 @@ class LyricsService:
             return None
 
     async def fetch_lyrics(self, search_query: str) -> str | None:
-        return await asyncio.get_running_loop().run_in_executor(
+        cache_key = search_query.strip().lower()
+        cached = _lyrics_cache.get(cache_key)
+        if cached:
+            expires_at, value = cached
+            if expires_at > time.monotonic():
+                return value
+            _lyrics_cache.pop(cache_key, None)
+
+        lyrics = await asyncio.get_running_loop().run_in_executor(
             _lyrics_executor, self._sync_fetch, search_query,
         )
+        if lyrics:
+            _lyrics_cache[cache_key] = (time.monotonic() + _CACHE_TTL_SECONDS, lyrics)
+        return lyrics
 
 
 lyrics_service = LyricsService()

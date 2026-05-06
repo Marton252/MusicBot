@@ -54,6 +54,9 @@ DEFAULT_VOLUME: int = 100
 MAX_QUEUE_SIZE: int = 100
 MAX_PLAYLIST_SIZE: int = 50
 
+# Runtime Settings
+BOT_TIMEZONE: str = os.getenv("BOT_TIMEZONE", "UTC")
+
 # Convert color hex strings to integers for discord.Embed
 def get_embed_color() -> int:
     try:
@@ -87,10 +90,24 @@ COOKIES_FROM_BROWSER: str = os.getenv("COOKIES_FROM_BROWSER", "")
 COOKIES_FILE: str = os.getenv("COOKIES_FILE", "")
 
 # Web Dashboard Settings
-DASHBOARD_PORT: int = int(os.getenv("DASHBOARD_PORT", "25825"))
+def _parse_port(value: str, default: int = 25825) -> int:
+    try:
+        port = int(value)
+        if 1 <= port <= 65535:
+            return port
+    except (TypeError, ValueError):
+        pass
+    logger.warning("Invalid DASHBOARD_PORT=%r; using %d.", value, default)
+    return default
+
+
+DASHBOARD_PORT: int = _parse_port(os.getenv("DASHBOARD_PORT", "25825"))
 DASHBOARD_BIND: str = os.getenv("DASHBOARD_BIND", "0.0.0.0")
 SSL_CERT_PATH: str = os.getenv("SSL_CERT_PATH", "certs/cert.pem")
 SSL_KEY_PATH: str = os.getenv("SSL_KEY_PATH", "certs/key.pem")
+TRUSTED_PROXY_IPS: tuple[str, ...] = tuple(
+    ip.strip() for ip in os.getenv("TRUSTED_PROXY_IPS", "").split(",") if ip.strip()
+)
 
 # Dashboard admin credentials — refuse to use known-weak password defaults
 DASHBOARD_ADMIN_USER: str = os.getenv("DASHBOARD_ADMIN_USER", "admin")

@@ -1,13 +1,12 @@
 import asyncio
 import datetime
 import logging
-import os
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from config import OWNER_ID, REPORT_CHANNEL_ID, SUPPORT_SERVER, WEBSITE
+from config import BOT_TIMEZONE, OWNER_ID, REPORT_CHANNEL_ID, SUPPORT_SERVER, WEBSITE
 from services.database import set_guild_language
 from services.language import language
 
@@ -168,7 +167,11 @@ async def _build_help_embed(guild_id: int | None, bot: commands.Bot) -> discord.
     user_count = sum(g.member_count for g in bot.guilds if g.member_count)
     server_count = len(bot.guilds)
     import zoneinfo
-    tz = zoneinfo.ZoneInfo(os.getenv("BOT_TIMEZONE", "UTC"))
+    try:
+        tz = zoneinfo.ZoneInfo(BOT_TIMEZONE)
+    except zoneinfo.ZoneInfoNotFoundError:
+        logger.warning("Invalid BOT_TIMEZONE=%r; falling back to UTC.", BOT_TIMEZONE)
+        tz = zoneinfo.ZoneInfo("UTC")
     now = datetime.datetime.now(tz).strftime("%Y. %m. %d. %H:%M")
 
     keys = [
@@ -273,6 +276,7 @@ class General(commands.Cog):
         _schedule_delete(sent)
 
     @app_commands.command(name="language", description="Set the bot server language.")
+    @app_commands.guild_only()
     @app_commands.default_permissions(manage_guild=True)
     @app_commands.choices(lang=[
         app_commands.Choice(name="English", value="en"),
@@ -293,6 +297,7 @@ class General(commands.Cog):
         name="setup_report",
         description="Set up a problem reporting panel with a button (Admin only).",
     )
+    @app_commands.guild_only()
     @app_commands.default_permissions(administrator=True)
     async def setup_report(self, interaction: discord.Interaction) -> None:
         guild_id = interaction.guild_id or 0
