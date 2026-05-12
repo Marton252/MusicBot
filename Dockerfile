@@ -13,7 +13,7 @@ COPY dash-ui/ ./
 RUN npm run build
 
 # ─── Stage 2: Python bot runtime ────────────────────────────────
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # System dependencies for discord.py[voice] + yt-dlp
 RUN apt-get update && apt-get install -y --no-install-recommends \
