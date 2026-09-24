@@ -117,7 +117,7 @@ if MUSIC_BACKEND not in {"ffmpeg", "lavalink", "auto"}:
 
 LAVALINK_HOST: str = os.getenv("LAVALINK_HOST", "lavalink").strip() or "lavalink"
 LAVALINK_PORT: int = _parse_port(os.getenv("LAVALINK_PORT", "2333"), 2333, name="LAVALINK_PORT")
-LAVALINK_PASSWORD: str = os.getenv("LAVALINK_PASSWORD", "change_me")
+LAVALINK_PASSWORD: str = os.getenv("LAVALINK_PASSWORD", "").strip()
 LAVALINK_SECURE: bool = os.getenv("LAVALINK_SECURE", "false").strip().lower() in {"1", "true", "yes", "on"}
 try:
     LAVALINK_CONNECT_RETRIES: int = max(1, int(os.getenv("LAVALINK_CONNECT_RETRIES", "12")))

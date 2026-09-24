@@ -58,8 +58,13 @@ class DatabaseTests(unittest.IsolatedAsyncioTestCase):
 
         fetched = await self.db.get_dashboard_user("moderator")
         self.assertEqual(fetched["password_hash"], "hash-v2")
+        self.assertEqual(fetched["session_version"], 1)
         self.assertFalse(fetched["can_restart"])
         self.assertTrue(fetched["can_view_logs"])
+
+        await self.db.update_dashboard_user(user["id"], can_restart=True)
+        fetched = await self.db.get_dashboard_user("moderator")
+        self.assertEqual(fetched["session_version"], 1)
 
         self.assertTrue(await self.db.delete_dashboard_user(user["id"]))
         self.assertIsNone(await self.db.get_dashboard_user("moderator"))

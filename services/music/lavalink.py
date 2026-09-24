@@ -15,7 +15,7 @@ from config import (
     LAVALINK_SECURE,
     MUSIC_BACKEND,
 )
-from services.extractor import YTDLSource
+from services.extractor import YTDLSource, is_safe_external_url
 
 logger = logging.getLogger("MusicBot.Lavalink")
 
@@ -79,6 +79,18 @@ async def connect_lavalink(bot: Any, *, quiet: bool = False) -> None:
     """Connect the optional Lavalink node during bot startup."""
     global _connected
     if not lavalink_requested():
+        return
+    if not LAVALINK_PASSWORD or LAVALINK_PASSWORD.lower() in {
+        "change_me",
+        "changeme",
+        "your_lavalink_password_here",
+    }:
+        message = "LAVALINK_PASSWORD must be set to a non-default secret."
+        if MUSIC_BACKEND == "lavalink":
+            logger.error("%s Set it in .env or use MUSIC_BACKEND=ffmpeg.", message)
+        else:
+            logger.warning("%s Falling back to FFmpeg.", message)
+        _connected = False
         return
 
     try:
@@ -227,6 +239,9 @@ async def resolve_track(query: str, *, requester_id: int | None = None) -> dict 
 
     try:
         if _is_url(query):
+            if not await is_safe_external_url(query):
+                logger.warning("Rejected unsafe external URL request before Lavalink fetch.")
+                return None
             result = await wavelink.Pool.fetch_tracks(query)
             playable = await _first_playable(result)
         else:

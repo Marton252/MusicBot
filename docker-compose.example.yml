@@ -5,7 +5,9 @@
 # Quick start:
 #   1. Copy .env.example to .env and fill in your values.
 #   2. Keep lavalink/application.yml.example next to this compose file.
-#   3. Rename this file to docker-compose.yml, or run with -f.
+#   3. Rename this file to docker-compose.yml, or run with -f. This is the
+#      self-contained bot + Lavalink deployment; the repository compose file
+#      is a separate reverse-proxy variant.
 #   4. Start everything with: docker compose up -d
 #
 # Services:
@@ -18,7 +20,7 @@
 
 services:
   bot:
-    image: ghcr.io/marton252/musicbot:latest
+    image: ghcr.io/marton252/musicbot@sha256:4d35b68df171533ee9616c899c256434011bc8c3dcdfdc0c95362fcecfeffadc # latest
     container_name: discord-musicbot
     restart: unless-stopped
     depends_on:
@@ -55,10 +57,9 @@ services:
   # Default audio backend. The 2333 port is intentionally not published.
   # If you set MUSIC_BACKEND=ffmpeg, this service can be removed.
   lavalink:
-    image: ghcr.io/lavalink-devs/lavalink:4-alpine
+    image: ghcr.io/lavalink-devs/lavalink@sha256:96be2be7ee50d35a9bd42c8c7b99e2a4b741f09123066c1ebb9e014dd7db204d # 4-alpine, UID/GID 322:322
     container_name: musicbot-lavalink
-    # Keeps plugin downloads writable on named volumes across Docker hosts.
-    user: "0:0"
+    # The official Alpine image runs as UID/GID 322:322.
     restart: unless-stopped
     env_file:
       - .env

@@ -2,7 +2,7 @@
 # Lavalink v4 configuration for Discord Music Bot
 #
 # This file is mounted by docker-compose.example.yml.
-# LAVALINK_PORT and LAVALINK_PASSWORD are read from .env.
+# LAVALINK_PORT and LAVALINK_PASSWORD are read from .env. The password is required.
 # ═══════════════════════════════════════════════════════════════════
 
 server:
@@ -19,7 +19,7 @@ lavalink:
       snapshot: false
 
   server:
-    password: "${LAVALINK_PASSWORD:change_me}"
+    password: "${LAVALINK_PASSWORD}"
 
     sources:
       youtube: false

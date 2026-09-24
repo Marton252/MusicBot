@@ -1,7 +1,9 @@
 import asyncio
 import concurrent.futures
+import ipaddress
 import logging
 import re
+import socket
 import threading
 import time
 from difflib import SequenceMatcher
@@ -27,6 +29,40 @@ _ytdl_executor = concurrent.futures.ThreadPoolExecutor(
 )
 _CACHE_TTL_SECONDS = 300
 _info_cache: dict[str, tuple[float, dict]] = {}
+
+
+async def is_safe_external_url(url: str) -> bool:
+    """Allow public HTTP(S) URLs while blocking server-side request targets."""
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False
+    if parsed.username or parsed.password:
+        return False
+
+    try:
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    except ValueError:
+        return False
+
+    try:
+        addresses = [ipaddress.ip_address(parsed.hostname)]
+    except ValueError:
+        loop = asyncio.get_running_loop()
+        try:
+            results = await loop.run_in_executor(
+                None,
+                lambda: socket.getaddrinfo(
+                    parsed.hostname, port, type=socket.SOCK_STREAM
+                ),
+            )
+        except (OSError, UnicodeError):
+            return False
+        try:
+            addresses = [ipaddress.ip_address(result[4][0]) for result in results]
+        except (IndexError, ValueError):
+            return False
+
+    return bool(addresses) and all(address.is_global for address in addresses)
 
 sp: spotipy.Spotify | None = None
 if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
@@ -447,6 +483,9 @@ class YTDLSource:
 
         # ── Direct URL (YouTube, SoundCloud, etc.) ────────────────────
         if query.startswith(('http://', 'https://')):
+            if not await is_safe_external_url(query):
+                logger.warning("Rejected unsafe external URL request.")
+                return None
             result = await cls._extract_url(query)
             _cache_set(cache_key, result)
             return result

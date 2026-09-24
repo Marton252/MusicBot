@@ -95,7 +95,9 @@ cp docker-compose.example.yml docker-compose.yml
 docker compose up -d
 ```
 
-The compose file starts both the bot and the internal Lavalink node, uses `ghcr.io/marton252/musicbot:latest`, persists SQLite data in a Docker volume, and exposes `${DASHBOARD_PORT:-25825}` for the dashboard.
+The copied compose file starts both the bot and the internal Lavalink node, uses an immutable GHCR image digest, persists SQLite data in a Docker volume, and exposes `${DASHBOARD_PORT:-25825}` for the dashboard. Set a strong `LAVALINK_PASSWORD` in `.env` before starting; the example no longer has a shared default password.
+
+The repository's `docker-compose.yml` is a separate, local reverse-proxy deployment variant. It intentionally contains only the bot and expects an external `proxy_net`; use `docker-compose.example.yml` when you need the self-contained bot plus Lavalink stack above.
 
 Docker networking is split intentionally:
 
@@ -177,7 +179,7 @@ Optional audio backend variables:
 | --- | --- |
 | `MUSIC_BACKEND` | `lavalink` by default; use `ffmpeg` for the built-in fallback or `auto` for best-effort fallback. |
 | `LAVALINK_HOST` / `LAVALINK_PORT` | Lavalink node address, default `lavalink:2333` for Docker Compose. |
-| `LAVALINK_PASSWORD` | Shared password for the bot and Lavalink node. |
+| `LAVALINK_PASSWORD` | Required shared password for the bot and Lavalink node; placeholder or empty values stop Lavalink startup. |
 | `LAVALINK_SECURE` | Enables HTTPS/WSS connections to external Lavalink nodes. |
 | `LAVALINK_CONNECT_RETRIES` | Startup connection attempts for compose/node warm-up. |
 | `LAVALINK_CONNECT_RETRY_DELAY` | Delay between Lavalink startup connection attempts. |

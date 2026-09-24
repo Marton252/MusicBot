@@ -4,7 +4,7 @@
 # ═══════════════════════════════════════════════════════════════════
 
 # ─── Stage 1: Build the React dashboard ─────────────────────────
-FROM node:26-slim AS dash-builder
+FROM node:26-slim@sha256:ec7758ee051e457b468b32bde57b0879010b325bb9862718e9615225ce4aaae1 AS dash-builder
 
 WORKDIR /build
 COPY dash-ui/package.json dash-ui/package-lock.json* ./
@@ -13,7 +13,7 @@ COPY dash-ui/ ./
 RUN npm run build
 
 # ─── Stage 2: Python bot runtime ────────────────────────────────
-FROM python:3.14-slim
+FROM python:3.14-slim@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2
 
 # System dependencies for discord.py[voice] + yt-dlp
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import unittest
 from unittest.mock import patch
 
@@ -26,12 +28,13 @@ class _FakeDB:
             "is_admin": True,
             "can_restart": True,
             "can_view_logs": True,
+            "session_version": 0,
             "password_encrypted": "",
         }
         self.created_users = []
         self.updated_users = []
 
-    async def upsert_admin_user(self, username, password_hash, password_encrypted=""):
+    async def upsert_admin_user(self, username, password_hash, password_encrypted="", password_changed=True):
         return None
 
     async def get_dashboard_user(self, username):
@@ -48,12 +51,15 @@ class _FakeDB:
             "is_admin": False,
             "can_restart": can_restart,
             "can_view_logs": can_view_logs,
+            "session_version": 0,
         }
         self.created_users.append(user)
         return dict(user)
 
     async def update_dashboard_user(self, user_id, **kwargs):
         self.updated_users.append((user_id, kwargs))
+        if "password_hash" in kwargs:
+            self.user["session_version"] += 1
         return True
 
     async def list_dashboard_users(self):
@@ -88,6 +94,31 @@ class DashboardSecurityTests(unittest.IsolatedAsyncioTestCase):
         limiter.reset("client")
 
         self.assertFalse(limiter.is_rate_limited("client"))
+
+    async def test_legacy_cookie_decodes_with_session_version_zero(self):
+        server = DashboardServer(_FakeBot(), 25825, "admin", "password")
+        token = server.signer.create_token("admin", True, True, True)
+        payload, _signature = token.rsplit(".", 1)
+        legacy_payload = ":".join(payload.split(":")[:-1])
+        legacy_signature = hmac.new(
+            server.signer._key, legacy_payload.encode(), hashlib.sha256
+        ).hexdigest()
+
+        decoded = server.signer.decode_token(f"{legacy_payload}.{legacy_signature}")
+
+        self.assertEqual(decoded["session_version"], 0)
+
+    async def test_password_change_invalidates_existing_http_session(self):
+        bot = _FakeBot()
+        server = DashboardServer(bot, 25825, "admin", "password")
+        token = server.signer.create_token("admin", True, True, True, session_version=0)
+        bot.db.user["session_version"] = 1
+
+        response = await server.app.test_client().get(
+            "/api/me", headers={"Cookie": f"DASH_SESSION={token}"}
+        )
+
+        self.assertEqual(response.status_code, 401)
 
     async def test_rate_limiter_preserves_future_lockout_after_base_window(self):
         limiter = RateLimiter(max_attempts=2, window_seconds=10)

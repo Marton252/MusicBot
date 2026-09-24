@@ -111,7 +111,7 @@ class RateLimiter:
 
 class CookieSigner:
     """Stateless session via HMAC-signed cookies with embedded user identity.
-    Token format: timestamp:username:is_admin:can_restart:can_view_logs.signature
+    Token format: timestamp:username:is_admin:can_restart:can_view_logs:session_version.signature
     Survives restarts because there is no server-side session store."""
 
     def __init__(self, secret: str, max_age: int = 2592000) -> None:
@@ -119,10 +119,18 @@ class CookieSigner:
         self.max_age = max_age
 
     def create_token(
-        self, username: str, is_admin: bool, can_restart: bool, can_view_logs: bool
+        self,
+        username: str,
+        is_admin: bool,
+        can_restart: bool,
+        can_view_logs: bool,
+        session_version: int = 0,
     ) -> str:
         """Create a signed token encoding user identity and permissions."""
-        payload = f"{int(time.time())}:{username}:{int(is_admin)}:{int(can_restart)}:{int(can_view_logs)}"
+        payload = (
+            f"{int(time.time())}:{username}:{int(is_admin)}:{int(can_restart)}:"
+            f"{int(can_view_logs)}:{int(session_version)}"
+        )
         sig = hmac.new(self._key, payload.encode(), hashlib.sha256).hexdigest()
         return f"{payload}.{sig}"
 
@@ -137,9 +145,13 @@ class CookieSigner:
             if not hmac.compare_digest(sig, expected):
                 return None
             parts = payload.split(':')
-            if len(parts) != 5:
+            if len(parts) == 5:
+                ts_str, username, is_admin, can_restart, can_view_logs = parts
+                session_version = 0
+            elif len(parts) == 6:
+                ts_str, username, is_admin, can_restart, can_view_logs, session_version = parts
+            else:
                 return None
-            ts_str, username, is_admin, can_restart, can_view_logs = parts
             age = int(time.time()) - int(ts_str)
             if not (0 <= age <= self.max_age):
                 return None
@@ -148,6 +160,7 @@ class CookieSigner:
                 'is_admin': bool(int(is_admin)),
                 'can_restart': bool(int(can_restart)),
                 'can_view_logs': bool(int(can_view_logs)),
+                'session_version': int(session_version),
             }
         except (ValueError, TypeError):
             return None
@@ -271,9 +284,18 @@ class DashboardServer:
 
     async def _init_admin(self) -> None:
         """Hash admin password and upsert into DB at startup."""
+        existing = await self.bot.db.get_dashboard_user(self.admin_user)
+        password_changed = True
+        if existing:
+            try:
+                password_changed = not _check_password(self.admin_password, existing['password_hash'])
+            except (ValueError, TypeError):
+                password_changed = True
         hashed = _hash_password(self.admin_password)
         encrypted = _encrypt_password(self.fernet, self.admin_password)
-        await self.bot.db.upsert_admin_user(self.admin_user, hashed, encrypted)
+        await self.bot.db.upsert_admin_user(
+            self.admin_user, hashed, encrypted, password_changed=password_changed
+        )
 
     def _get_stats(self) -> dict:
         """Gather system stats — cached for 1 second to avoid redundant syscalls."""
@@ -419,6 +441,10 @@ class DashboardServer:
                 resp = await make_response(jsonify({'error': 'Session invalidated'}), 401)
                 resp.delete_cookie('DASH_SESSION')
                 return resp
+            if token_user['session_version'] != db_user['session_version']:
+                resp = await make_response(jsonify({'error': 'Session invalidated'}), 401)
+                resp.delete_cookie('DASH_SESSION')
+                return resp
 
             # Use live DB permissions, not stale token permissions
             request.dash_user = {
@@ -483,6 +509,7 @@ class DashboardServer:
                 db_user['is_admin'],
                 db_user['can_restart'],
                 db_user['can_view_logs'],
+                db_user['session_version'],
             )
             user_info = {
                 'username': db_user['username'],
@@ -668,11 +695,15 @@ class DashboardServer:
             if not db_user:
                 await websocket.close(1008, 'User deleted')
                 return
+            if user['session_version'] != db_user['session_version']:
+                await websocket.close(1008, 'Session invalidated')
+                return
             user = {
                 'username': db_user['username'],
                 'is_admin': db_user['is_admin'],
                 'can_restart': db_user['can_restart'],
                 'can_view_logs': db_user['can_view_logs'],
+                'session_version': db_user['session_version'],
             }
 
             dash_logger = logging.getLogger('MusicBot.Dashboard')
@@ -690,12 +721,16 @@ class DashboardServer:
                         if not db_user:
                             await websocket.close(1008, 'User deleted')
                             return
+                        if user['session_version'] != db_user['session_version']:
+                            await websocket.close(1008, 'Session invalidated')
+                            return
                         # Refresh live permissions from DB
                         user = {
                             'username': db_user['username'],
                             'is_admin': db_user['is_admin'],
                             'can_restart': db_user['can_restart'],
                             'can_view_logs': db_user['can_view_logs'],
+                            'session_version': db_user['session_version'],
                         }
                         can_view_logs = user['can_view_logs']
 

@@ -34,9 +34,16 @@ class Database:
                 is_admin INTEGER NOT NULL DEFAULT 0,
                 can_restart INTEGER NOT NULL DEFAULT 0,
                 can_view_logs INTEGER NOT NULL DEFAULT 1,
+                session_version INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
         ''')
+        async with self._conn.execute('PRAGMA table_info(dashboard_users)') as cursor:
+            columns = {row[1] for row in await cursor.fetchall()}
+        if 'session_version' not in columns:
+            await self._conn.execute(
+                'ALTER TABLE dashboard_users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0'
+            )
         await self._conn.execute('''
             CREATE TABLE IF NOT EXISTS saved_queues (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -109,6 +116,7 @@ class Database:
         username: str,
         password_hash: str,
         password_encrypted: str = '',
+        password_changed: bool = True,
     ) -> None:
         """Insert or update the admin user from .env credentials."""
         conn = await self._get_conn()
@@ -120,8 +128,9 @@ class Database:
                 password_encrypted=excluded.password_encrypted,
                 is_admin=1,
                 can_restart=1,
-                can_view_logs=1
-        ''', (username, password_hash, password_encrypted))
+                can_view_logs=1,
+                session_version=session_version + ?
+        ''', (username, password_hash, password_encrypted, int(password_changed)))
         await conn.commit()
         logger.info("Admin user '%s' upserted.", username)
 
@@ -129,7 +138,7 @@ class Database:
         """Get a dashboard user by username. Returns dict or None."""
         conn = await self._get_conn()
         async with conn.execute(
-            'SELECT id, username, password_hash, is_admin, can_restart, can_view_logs FROM dashboard_users WHERE username = ?',
+            'SELECT id, username, password_hash, is_admin, can_restart, can_view_logs, session_version FROM dashboard_users WHERE username = ?',
             (username,)
         ) as cursor:
             row = await cursor.fetchone()
@@ -142,6 +151,7 @@ class Database:
                 'is_admin': bool(row[3]),
                 'can_restart': bool(row[4]),
                 'can_view_logs': bool(row[5]),
+                'session_version': row[6],
             }
 
     async def list_dashboard_users(self) -> list[dict]:
@@ -204,6 +214,7 @@ class Database:
         if password_hash is not None:
             updates.append('password_hash = ?')
             values.append(password_hash)
+            updates.append('session_version = session_version + 1')
         if password_encrypted is not None:
             updates.append('password_encrypted = ?')
             values.append(password_encrypted)

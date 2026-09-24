@@ -112,6 +112,22 @@ class LavalinkAdapterAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(voice.filters)
         self.assertTrue(voice.disconnected)
 
+    async def test_lavalink_rejects_private_url_before_fetch(self):
+        lavalink.MUSIC_BACKEND = "lavalink"
+        lavalink._connected = True
+        fake_wavelink = SimpleNamespace(
+            Pool=SimpleNamespace(fetch_tracks=AsyncMock()),
+        )
+
+        with (
+            patch.object(lavalink, "_import_wavelink", return_value=fake_wavelink),
+            patch.object(lavalink, "is_safe_external_url", new=AsyncMock(return_value=False)),
+        ):
+            result = await lavalink.resolve_track("http://127.0.0.1/audio")
+
+        self.assertIsNone(result)
+        fake_wavelink.Pool.fetch_tracks.assert_not_awaited()
+
     async def test_node_disconnect_marks_players_recovering_and_preserves_current(self):
         bot = SimpleNamespace()
         cog = Music(bot)
@@ -152,6 +168,7 @@ class LavalinkAdapterAsyncTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(lavalink, "_import_wavelink", return_value=fake_wavelink),
+            patch.object(lavalink, "LAVALINK_PASSWORD", "test-lavalink-secret"),
             patch.object(lavalink, "_wait_for_lavalink_socket", new=AsyncMock()),
             patch.object(lavalink, "LAVALINK_CONNECT_RETRIES", 2),
             patch.object(lavalink, "LAVALINK_CONNECT_RETRY_DELAY", 0.01),
@@ -172,6 +189,7 @@ class LavalinkAdapterAsyncTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(lavalink, "_import_wavelink", return_value=fake_wavelink),
+            patch.object(lavalink, "LAVALINK_PASSWORD", "test-lavalink-secret"),
             patch.object(lavalink, "_wait_for_lavalink_socket", new=AsyncMock()),
             patch.object(lavalink, "LAVALINK_CONNECT_RETRIES", 2),
             patch.object(lavalink, "LAVALINK_CONNECT_RETRY_DELAY", 0.01),
@@ -193,6 +211,7 @@ class LavalinkAdapterAsyncTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(lavalink, "_import_wavelink", return_value=fake_wavelink),
+            patch.object(lavalink, "LAVALINK_PASSWORD", "test-lavalink-secret"),
             patch.object(lavalink, "_wait_for_lavalink_socket", new=AsyncMock()),
             patch.object(lavalink, "LAVALINK_CONNECT_RETRIES", 1),
             self.assertLogs("MusicBot.Lavalink", level="INFO") as logs,
@@ -213,6 +232,7 @@ class LavalinkAdapterAsyncTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(lavalink, "_import_wavelink", return_value=fake_wavelink),
+            patch.object(lavalink, "LAVALINK_PASSWORD", "test-lavalink-secret"),
             patch.object(
                 lavalink,
                 "_wait_for_lavalink_socket",
